@@ -277,6 +277,7 @@ const PRODUCTS = [
 
 const LIFECYCLE_PHASES = ["PLACED", "PRESENTED", "PROCESSING", "RESULT"];
 const STORAGE_KEY = "taplink_cloud_demo_config_v1";
+const FIXED_PUBLIC_WEBHOOK_URL = "http://47.77.239.198/webhook/sunbay";
 
 let selectedApiId = "sale";
 let eventSource = null;
@@ -397,7 +398,7 @@ function getBackendUrl() {
 }
 
 function getTerminalEventNotifyUrl() {
-  return `${getBackendUrl()}/webhook/terminal-events`;
+  return FIXED_PUBLIC_WEBHOOK_URL;
 }
 
 function buildAuthorization() {
