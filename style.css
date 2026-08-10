@@ -89,12 +89,41 @@ body {
   justify-content: center;
 }
 
+.checkout-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
 .checkout-card h2 {
+  margin: 4px 0 0;
   font-size: 1.1rem;
+}
+
+.checkout-secure {
+  border: 1px solid #b9d9e4;
+  border-radius: 999px;
+  color: var(--accent);
+  background: #effaff;
+  font-size: 11px;
+  padding: 5px 9px;
+  white-space: nowrap;
 }
 
 .checkout-paybar {
   margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
 .checkout-pay-btn {
@@ -104,6 +133,28 @@ body {
   border-radius: 12px;
   background: linear-gradient(180deg, #176b87 0%, #115269 100%);
 }
+
+.checkout-auth-btn {
+  width: 100%;
+  padding: 14px;
+  font-size: 18px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #d96b48 0%, #b44e32 100%);
+}
+
+.checkout-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.checkout-note code,
+.modal-guard b {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
 
 .two-col { grid-template-columns: 1fr 1fr; }
 
@@ -498,6 +549,17 @@ textarea {
   font-size: 12px;
 }
 
+.modal-guard {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border: 1px solid #f1d28e;
+  border-radius: 10px;
+  background: #fff9e9;
+  color: #76591d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .modal-timeline {
   margin-top: 10px;
   border: 1px solid var(--border);
@@ -567,6 +629,10 @@ textarea {
   }
 
   .checkout-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-paybar {
     grid-template-columns: 1fr;
   }
 

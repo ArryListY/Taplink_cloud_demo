@@ -4,14 +4,10 @@
 
 ## 功能
 
-- 参数配置：环境、Base URL、API Key、App ID、Merchant ID、Terminal SN、币种、通知地址
-- 模拟商品：商品数量调整、税费/小费/附加费配置、自动金额组装
-- 接口调试：内置 15 个常用对外接口（半集成交易/结算/查询 + 线上 checkout/direct-payment/refund）
-- 请求/响应：仅 Real 请求链路，统一通过后端代理调用 SUNBAY OpenAPI
-- 终端事件：Cloud 模式终端事件订阅状态加载与事件流展示（Real SSE）
-- 商户动作：4 个主按钮（收款/撤销/退款/查单）+ 二级接口菜单
-- 交易追踪：通过 terminalEventNotifyUrl 对应通知实时刷新交易状态直到终态
-- 文档导航：对接 llms 索引中的其他公开接口入口
+- 线上收银台：页面直接提供 `Sale` 与 `Auth` 主操作，商品、金额和回调进度清晰展示
+- 抽屉式调试：环境、认证、商户参数、固定回调地址、请求参数、网关响应和事件日志均通过按钮抽屉查看
+- 交易追踪：`terminalEventNotifyUrl` 的 `TRANSACTION_ENDED` 与 `notifyUrl` 的 `transactionStatus` 同时满足后，才确认交易最终结果
+- 交易接口：内置半集成 Sale/Auth/撤销/退款/查单及其他线上接口
 
 ## 快速使用（仅前端静态）
 
@@ -51,6 +47,10 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000
 
 ## Real 模式注意事项
 
-- 浏览器直连真实 API 可能受 CORS 限制。
-- 如需稳定联调，建议在后端代理转发后再从前端调用。
-- `onSuccess` 仅代表请求受理，不代表交易最终批准，需结合 Query 接口或事件流判断终态。
+- 页面固定向请求写入以下两个回调地址，不允许在 UI 中覆盖：
+  - `notifyUrl`: `http://47.77.239.198/webhook/sunbay`
+  - `terminalEventNotifyUrl`: `http://47.77.239.198/terminal-events/sunbay`
+- 网关接口 HTTP 成功只代表请求受理，不代表交易批准；HTTP 失败或网络异常也不直接判定交易失败。
+- 交易弹窗实时展示终端事件；只有收到 `terminalEventNotifyUrl` 的 `TRANSACTION_ENDED`，并且收到 `notifyUrl` 回调中的 `transactionStatus`，才会显示最终成功/失败。
+- 两个回调先后顺序不固定：先到的结果会暂存，第二个条件满足后才确认交易。
+- 浏览器直连真实 API 可能受 CORS 限制；如需稳定联调，建议通过后端代理转发。
