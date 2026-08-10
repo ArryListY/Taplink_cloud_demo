@@ -733,6 +733,16 @@ function matchActiveTxnByIds(requestId, referenceOrderId, transactionId = "") {
   return false;
 }
 
+function normalizeTerminalEventType(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return normalized.startsWith("TERMINAL.") ? normalized.slice("TERMINAL.".length) : normalized;
+}
+
+function extractTerminalEventType(parsed, terminalSnapshot) {
+  const headerEventType = parsed?.payload?.headers?.["x-event-type"] || parsed?.payload?.headers?.["X-Event-Type"] || "";
+  return normalizeTerminalEventType(terminalSnapshot.eventType || headerEventType);
+}
+
 function extractTerminalNotifySnapshot(body) {
   const nodes = collectPlainObjects(body);
   let eventType = "";
@@ -814,7 +824,7 @@ function handleEventData(raw) {
   if (parsed.type === "terminal_notify_received") {
     const body = (parsed.payload && parsed.payload.payload) || {};
     const term = extractTerminalNotifySnapshot(body);
-    const eventType = term.eventType || "";
+    const eventType = extractTerminalEventType(parsed, term);
     const eventStage = term.eventStage || "";
     const transactionId = term.transactionId || "";
     const requestId = term.transactionRequestId || "";
@@ -1087,6 +1097,28 @@ function disconnectEventStream() {
   setEventBadge("idle");
 }
 
+async function replayRecentEventsForActiveTxn() {
+  if (!activeTxn) return;
+  try {
+    const response = await fetch(`${getBackendUrl()}/api/events/recent`);
+    if (!response.ok) return;
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    let replayed = 0;
+    for (const item of items) {
+      if (item && (item.type === "terminal_notify_received" || item.type === "webhook_received")) {
+        handleEventData(JSON.stringify(item));
+        replayed += 1;
+      }
+    }
+    if (replayed) {
+      logEvent(`已回放 ${replayed} 条服务端回调事件，补齐可能错过的实时通知`);
+    }
+  } catch (err) {
+    logEvent(`回放服务端事件失败: ${err.message || "unknown"}`);
+  }
+}
+
 async function runSupplementQuery() {
   if (!activeTxn || (!activeTxn.transactionId && !activeTxn.transactionRequestId)) {
     appendModalTimeline("暂无可查询交易，请先发起交易");
@@ -1231,6 +1263,7 @@ async function runRequest(apiId = selectedApiId) {
   resetModalForTxn(activeTxn);
 
   connectEventStream();
+  void replayRecentEventsForActiveTxn();
 
   el.runBtn.disabled = true;
   el.runAuthBtn.disabled = true;

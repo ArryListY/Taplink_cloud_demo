@@ -53,4 +53,5 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000
 - 网关接口 HTTP 成功只代表请求受理，不代表交易批准；HTTP 失败或网络异常也不直接判定交易失败。
 - 交易弹窗实时展示终端事件；只有收到 `terminalEventNotifyUrl` 的 `TRANSACTION_ENDED`，并且收到 `notifyUrl` 回调中的 `transactionStatus`，才会显示最终成功/失败。
 - 两个回调先后顺序不固定：先到的结果会暂存，第二个条件满足后才确认交易。
+- 页面发起交易后会回放后端最近的 webhook 事件，避免 SSE 短暂断开导致页面漏掉回调。
 - 浏览器直连真实 API 可能受 CORS 限制；如需稳定联调，建议通过后端代理转发。
