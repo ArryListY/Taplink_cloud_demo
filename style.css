@@ -50,6 +50,13 @@ body {
   color: var(--muted);
 }
 
+.hero-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .status-row {
   display: flex;
   gap: 8px;
@@ -73,6 +80,29 @@ body {
   display: grid;
   gap: 14px;
   margin-top: 14px;
+}
+
+.checkout-shell {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 720px);
+  justify-content: center;
+}
+
+.checkout-card h2 {
+  font-size: 1.1rem;
+}
+
+.checkout-paybar {
+  margin-top: 12px;
+}
+
+.checkout-pay-btn {
+  width: 100%;
+  padding: 14px;
+  font-size: 18px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #176b87 0%, #115269 100%);
 }
 
 .two-col { grid-template-columns: 1fr 1fr; }
@@ -350,6 +380,58 @@ textarea {
   font-size: 13px;
 }
 
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+}
+
+.drawer.hidden {
+  display: none;
+}
+
+.drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(8, 20, 30, 0.44);
+  cursor: pointer;
+}
+
+.drawer-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: min(780px, 96vw);
+  background: #fff;
+  border-left: 1px solid var(--border);
+  box-shadow: -18px 0 42px rgba(5, 22, 33, 0.2);
+  padding: 14px;
+  overflow: auto;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.drawer-head h3 {
+  margin: 0;
+}
+
+.drawer-section {
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-section h2 {
+  margin: 0;
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -481,6 +563,10 @@ textarea {
   .two-col,
   .field-grid,
   .totals {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-shell {
     grid-template-columns: 1fr;
   }
 

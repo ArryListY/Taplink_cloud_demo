@@ -330,6 +330,25 @@ const el = {
   stepPresented: document.getElementById("stepPresented"),
   stepProcessing: document.getElementById("stepProcessing"),
   stepResult: document.getElementById("stepResult"),
+  openStatusDrawerBtn: document.getElementById("openStatusDrawerBtn"),
+  openConfigDrawerBtn: document.getElementById("openConfigDrawerBtn"),
+  openOpsDrawerBtn: document.getElementById("openOpsDrawerBtn"),
+  openObserveDrawerBtn: document.getElementById("openObserveDrawerBtn"),
+  sideDrawer: document.getElementById("sideDrawer"),
+  drawerBackdrop: document.getElementById("drawerBackdrop"),
+  drawerCloseBtn: document.getElementById("drawerCloseBtn"),
+  drawerTitle: document.getElementById("drawerTitle"),
+  drawerStatusSection: document.getElementById("drawerStatusSection"),
+  drawerConfigSection: document.getElementById("drawerConfigSection"),
+  drawerOpsSection: document.getElementById("drawerOpsSection"),
+  drawerObserveSection: document.getElementById("drawerObserveSection"),
+};
+
+const DRAWER_SECTIONS = {
+  status: { title: "交易状态", node: () => el.drawerStatusSection },
+  config: { title: "收银配置", node: () => el.drawerConfigSection },
+  ops: { title: "更多操作", node: () => el.drawerOpsSection },
+  observe: { title: "响应与事件", node: () => el.drawerObserveSection },
 };
 
 function uid(prefix) {
@@ -678,21 +697,59 @@ function deriveProgressStateFromTerminalEvent(eventType, eventStage) {
   return "";
 }
 
-function matchActiveTxnByIds(requestId, referenceOrderId) {
+function matchActiveTxnByIds(requestId, referenceOrderId, transactionId = "") {
   if (!activeTxn) return true;
 
   const activeReqId = activeTxn.transactionRequestId && activeTxn.transactionRequestId !== "-" ? activeTxn.transactionRequestId : "";
   const activeRefId = activeTxn.referenceOrderId && activeTxn.referenceOrderId !== "-" ? activeTxn.referenceOrderId : "";
+  const activeTxnId = activeTxn.transactionId && activeTxn.transactionId !== "-" ? activeTxn.transactionId : "";
 
   if (activeReqId) {
-    if (!requestId) return false;
-    return requestId === activeReqId;
+    if (requestId && requestId === activeReqId) return true;
+    if (activeTxnId && transactionId && transactionId === activeTxnId) return true;
+    return false;
   }
   if (activeRefId) {
-    if (!referenceOrderId) return false;
-    return referenceOrderId === activeRefId;
+    if (referenceOrderId && referenceOrderId === activeRefId) return true;
+    if (activeTxnId && transactionId && transactionId === activeTxnId) return true;
+    return false;
+  }
+  if (activeTxnId) {
+    if (!transactionId) return false;
+    return transactionId === activeTxnId;
   }
   return false;
+}
+
+function extractTerminalNotifySnapshot(body) {
+  const nodes = collectPlainObjects(body);
+  let eventType = "";
+  let eventStage = "";
+  let transactionId = "";
+  let transactionRequestId = "";
+  let referenceOrderId = "";
+  let transactionStatus = "";
+  let transactionResultCode = "";
+
+  for (const node of nodes) {
+    if (!eventType && node.eventType) eventType = String(node.eventType).toUpperCase();
+    if (!eventStage && node.eventStage) eventStage = String(node.eventStage).toUpperCase();
+    if (!transactionId && node.transactionId) transactionId = String(node.transactionId);
+    if (!transactionRequestId && node.transactionRequestId) transactionRequestId = String(node.transactionRequestId);
+    if (!referenceOrderId && node.referenceOrderId) referenceOrderId = String(node.referenceOrderId);
+    if (!transactionStatus && node.transactionStatus) transactionStatus = String(node.transactionStatus).toUpperCase();
+    if (!transactionResultCode && node.transactionResultCode) transactionResultCode = String(node.transactionResultCode);
+  }
+
+  return {
+    eventType,
+    eventStage,
+    transactionId,
+    transactionRequestId,
+    referenceOrderId,
+    transactionStatus,
+    transactionResultCode,
+  };
 }
 
 function extractWebhookTxnSnapshot(body) {
@@ -749,13 +806,13 @@ function handleEventData(raw) {
 
   if (parsed.type === "terminal_notify_received") {
     const body = (parsed.payload && parsed.payload.payload) || {};
-    const envelopePayload = body.payload && typeof body.payload === "object" ? body.payload : {};
-    const eventType = envelopePayload.eventType || body.eventType || "";
-    const eventStage = envelopePayload.eventStage || body.eventStage || "";
-    const transactionId = envelopePayload.transactionId || body.transactionId || "";
-    const requestId = envelopePayload.transactionRequestId || body.transactionRequestId || "";
-    const referenceOrderId = envelopePayload.referenceOrderId || body.referenceOrderId || "";
-    const matchesTxn = matchActiveTxnByIds(requestId, referenceOrderId);
+    const term = extractTerminalNotifySnapshot(body);
+    const eventType = term.eventType || "";
+    const eventStage = term.eventStage || "";
+    const transactionId = term.transactionId || "";
+    const requestId = term.transactionRequestId || "";
+    const referenceOrderId = term.referenceOrderId || "";
+    const matchesTxn = matchActiveTxnByIds(requestId, referenceOrderId, transactionId);
 
     if (matchesTxn) {
       if (activeTxn && transactionId) {
@@ -768,12 +825,19 @@ function handleEventData(raw) {
       }
 
       const progressState = deriveProgressStateFromTerminalEvent(eventType, eventStage);
-      if (progressState) {
+      const visibleProgressState = progressState || (eventType ? `EVENT_${eventType}` : "");
+      if (visibleProgressState) {
         updateTxnStatus(progressState, {
           referenceOrderId: referenceOrderId || (activeTxn && activeTxn.referenceOrderId) || "-",
           transactionRequestId: requestId || (activeTxn && activeTxn.transactionRequestId) || "-",
         });
-        appendModalTimeline(`terminalEventNotifyUrl 阶段 -> ${progressState} (reqId=${requestId || "-"})`);
+        if (!progressState) {
+          updateTxnStatus(visibleProgressState, {
+            referenceOrderId: referenceOrderId || (activeTxn && activeTxn.referenceOrderId) || "-",
+            transactionRequestId: requestId || (activeTxn && activeTxn.transactionRequestId) || "-",
+          });
+        }
+        appendModalTimeline(`terminalEventNotifyUrl 阶段 -> ${visibleProgressState} (reqId=${requestId || "-"})`);
       }
 
       if (activeTxn && progressState === "TERMINAL_ENDED") {
@@ -792,6 +856,8 @@ function handleEventData(raw) {
           activeTxn.pendingNotifyEventType = "";
         }
       }
+    } else if (eventType || requestId || transactionId) {
+      logEvent(`[terminal忽略] 当前交易reqId=${activeTxn?.transactionRequestId || "-"} 收到reqId=${requestId || "-"} txnId=${transactionId || "-"} eventType=${eventType || "-"}`);
     }
   }
 
@@ -803,7 +869,7 @@ function handleEventData(raw) {
       return;
     }
     const snap = extractWebhookTxnSnapshot(body);
-    const matchesTxn = matchActiveTxnByIds(snap.transactionRequestId, snap.referenceOrderId);
+    const matchesTxn = matchActiveTxnByIds(snap.transactionRequestId, snap.referenceOrderId, snap.transactionId);
     if (matchesTxn) {
       if (activeTxn && snap.transactionId) {
         activeTxn.transactionId = snap.transactionId;
@@ -850,6 +916,34 @@ function buildGetQuery(payload) {
     query[key] = value;
   }
   return query;
+}
+
+function closeDrawer() {
+  if (!el.sideDrawer) return;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && el.sideDrawer.contains(active)) {
+    active.blur();
+  }
+  el.sideDrawer.classList.add("hidden");
+  el.sideDrawer.setAttribute("aria-hidden", "true");
+}
+
+function openDrawer(sectionKey) {
+  if (!el.sideDrawer) return;
+  const entry = DRAWER_SECTIONS[sectionKey];
+  if (!entry) return;
+
+  for (const key of Object.keys(DRAWER_SECTIONS)) {
+    const node = DRAWER_SECTIONS[key].node();
+    if (!node) continue;
+    node.classList.add("hidden");
+  }
+
+  const activeNode = entry.node();
+  if (activeNode) activeNode.classList.remove("hidden");
+  if (el.drawerTitle) el.drawerTitle.textContent = entry.title;
+  el.sideDrawer.classList.remove("hidden");
+  el.sideDrawer.setAttribute("aria-hidden", "false");
 }
 
 function collectPlainObjects(root, maxNodes = 40) {
@@ -1233,9 +1327,19 @@ function bindEvents() {
   });
 
   el.rebuildBtn.addEventListener("click", () => rebuildRequest(selectedApiId));
-  el.runBtn.addEventListener("click", () => runRequest(selectedApiId));
+  el.runBtn.addEventListener("click", () => {
+    rebuildRequest("sale");
+    runRequest("sale");
+  });
   el.queryTxnBtn.addEventListener("click", runSupplementQuery);
   el.modalQueryTxnBtn.addEventListener("click", runSupplementQuery);
+
+  if (el.openStatusDrawerBtn) el.openStatusDrawerBtn.addEventListener("click", () => openDrawer("status"));
+  if (el.openConfigDrawerBtn) el.openConfigDrawerBtn.addEventListener("click", () => openDrawer("config"));
+  if (el.openOpsDrawerBtn) el.openOpsDrawerBtn.addEventListener("click", () => openDrawer("ops"));
+  if (el.openObserveDrawerBtn) el.openObserveDrawerBtn.addEventListener("click", () => openDrawer("observe"));
+  if (el.drawerCloseBtn) el.drawerCloseBtn.addEventListener("click", closeDrawer);
+  if (el.drawerBackdrop) el.drawerBackdrop.addEventListener("click", closeDrawer);
 
   el.subBtn.addEventListener("click", connectEventStream);
   el.unsubBtn.addEventListener("click", () => {
@@ -1252,6 +1356,12 @@ function bindEvents() {
   el.statusModal.addEventListener("click", (event) => {
     if (event.target === el.statusModal) {
       el.statusModal.classList.add("hidden");
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeDrawer();
     }
   });
 
@@ -1276,6 +1386,7 @@ function bootstrap() {
   updateTxnStatus("IDLE", {});
   el.queryTxnBtn.disabled = false;
   connectEventStream();
+  closeDrawer();
   logEvent("线上收银台已就绪。系统仅接收 webhook 推送更新状态，不主动订阅终端事件接口。");
 }
 

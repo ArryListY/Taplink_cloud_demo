@@ -11,16 +11,57 @@
   <main class="layout">
     <header class="hero">
       <h1>TapLink 线上收银台</h1>
-      <p>请选择商品并发起收款，系统将自动跟踪交易状态并实时回显。</p>
+      <p>请选择商品并发起支付，交易进度将通过终端事件实时回显。</p>
       <div class="status-row">
         <span id="modeBadge" class="badge">线上模式: REAL</span>
-        <span id="eventBadge" class="badge idle">事件状态: 未订阅</span>
+        <span id="eventBadge" class="badge idle">事件状态: 未连接</span>
+      </div>
+      <div class="hero-actions">
+        <button id="openStatusDrawerBtn" class="btn ghost" type="button">交易状态</button>
+        <button id="openConfigDrawerBtn" class="btn ghost" type="button">收银配置</button>
+        <button id="openOpsDrawerBtn" class="btn ghost" type="button">更多操作</button>
+        <button id="openObserveDrawerBtn" class="btn ghost" type="button">响应与事件</button>
       </div>
     </header>
 
-    <section class="grid two-col">
-      <article class="card">
-        <h2>1) 收银配置</h2>
+    <section class="checkout-shell">
+      <article class="card checkout-card">
+        <h2>选择商品</h2>
+        <div id="productList" class="product-list"></div>
+        <div class="totals">
+          <div><span>Order Amount</span><strong id="orderAmountText">$0.00</strong></div>
+          <div><span>Total Amount</span><strong id="totalAmountText">$0.00</strong></div>
+        </div>
+        <div class="checkout-paybar">
+          <button id="runBtn" class="btn checkout-pay-btn" type="button">发起支付</button>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <div id="sideDrawer" class="drawer hidden" aria-hidden="true">
+    <button id="drawerBackdrop" class="drawer-backdrop" type="button" aria-label="关闭抽屉"></button>
+    <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <div class="drawer-head">
+        <h3 id="drawerTitle">抽屉</h3>
+        <button id="drawerCloseBtn" class="modal-close" type="button">关闭</button>
+      </div>
+
+      <section id="drawerStatusSection" class="drawer-section hidden">
+        <h2>当前交易状态</h2>
+        <div id="txnStatusPanel" class="txn-status idle">
+          <div><strong>当前交易:</strong> <span id="txnRef">-</span></div>
+          <div><strong>请求流水:</strong> <span id="txnReq">-</span></div>
+          <div><strong>状态:</strong> <span id="txnState">未开始</span></div>
+        </div>
+        <p class="hint">当 terminalEventNotifyUrl 到达 TRANSACTION_ENDED 后，再以 notifyUrl 回调确认最终交易状态。</p>
+        <div class="toolbar">
+          <button id="queryTxnBtn" class="btn ghost" type="button">补充查询交易结果</button>
+        </div>
+      </section>
+
+      <section id="drawerConfigSection" class="drawer-section hidden">
+        <h2>收银配置</h2>
         <div class="field-grid">
           <label>Demo Backend URL
             <input id="backendUrl" value="http://127.0.0.1:8000" />
@@ -61,21 +102,10 @@
             <input id="returnUrl" value="https://merchant.example.com/result" />
           </label>
         </div>
-      </article>
+      </section>
 
-      <article class="card">
-        <h2>2) 商品与订单</h2>
-        <div id="productList" class="product-list"></div>
-        <div class="totals">
-          <div><span>Order Amount</span><strong id="orderAmountText">$0.00</strong></div>
-          <div><span>Total Amount</span><strong id="totalAmountText">$0.00</strong></div>
-        </div>
-      </article>
-    </section>
-
-    <section class="grid two-col">
-      <article class="card">
-        <h2>3) 快捷操作</h2>
+      <section id="drawerOpsSection" class="drawer-section hidden">
+        <h2>更多操作</h2>
         <div class="primary-actions" id="primaryActions">
           <button class="action-btn" data-action="sale" type="button">收款</button>
           <button class="action-btn" data-action="void" type="button">撤销</button>
@@ -88,57 +118,34 @@
           </label>
           <button id="runSecondaryBtn" class="btn ghost" type="button">执行二级接口</button>
         </div>
-      </article>
+      </section>
 
-      <article class="card">
-        <h2>4) 当前交易状态</h2>
-        <div id="txnStatusPanel" class="txn-status idle">
-          <div><strong>当前交易:</strong> <span id="txnRef">-</span></div>
-          <div><strong>请求流水:</strong> <span id="txnReq">-</span></div>
-          <div><strong>状态:</strong> <span id="txnState">未开始</span></div>
-        </div>
-        <p class="hint">系统会通过 terminalEventNotifyUrl 对应通知持续刷新，直到交易终态。</p>
-
-        <h2 style="margin-top:14px;">5) 网关响应</h2>
+      <section id="drawerObserveSection" class="drawer-section hidden">
+        <h2>响应与事件</h2>
         <div class="toolbar">
-          <button id="rebuildBtn" class="btn ghost">按当前配置重建交易参数</button>
-          <button id="runBtn" class="btn">发起当前交易</button>
-          <button id="queryTxnBtn" class="btn ghost" type="button">补充查询交易结果</button>
+          <button id="rebuildBtn" class="btn ghost" type="button">按当前配置重建交易参数</button>
         </div>
         <p class="hint" id="endpointHint"></p>
-        <textarea id="responsePayload" rows="16" readonly></textarea>
-      </article>
-
-      <article class="card">
-        <h2>6) 终端与通知事件</h2>
-        <p class="hint">系统会自动订阅终端事件并接收 terminalEventNotifyUrl 通知，你可以在下方查看完整事件轨迹。</p>
-        <div id="eventLog" class="event-log"></div>
-      </article>
-    </section>
-
-    <details class="card advanced">
-      <summary>高级设置与调试面板</summary>
-      <section>
-        <h2>7) Cloud 终端事件订阅配置</h2>
         <label>terminalEventNotifyUrl（自动回填到请求中）
-          <input id="eventUrl" value="http://47.77.239.198/webhook/sunbay" />
+          <input id="eventUrl" value="http://47.77.239.198/terminal-events/sunbay" readonly />
         </label>
         <div class="toolbar">
-          <button id="subBtn" class="btn">连接实时状态流</button>
-          <button id="unsubBtn" class="btn ghost">断开实时状态流</button>
-          <button id="clearEventsBtn" class="btn ghost">清空事件流</button>
+          <button id="subBtn" class="btn" type="button">连接实时状态流</button>
+          <button id="unsubBtn" class="btn ghost" type="button">断开实时状态流</button>
+          <button id="clearEventsBtn" class="btn ghost" type="button">清空事件流</button>
         </div>
+        <label>网关响应
+          <textarea id="responsePayload" rows="10" readonly></textarea>
+        </label>
+        <label>请求参数（高级）
+          <textarea id="requestPayload" rows="10"></textarea>
+        </label>
+        <div class="hint">终端与通知事件</div>
+        <div id="eventLog" class="event-log"></div>
+        <div id="linkGroups" class="link-groups" style="margin-top:10px;"></div>
       </section>
-      <section>
-        <h2>8) 请求参数（高级）</h2>
-        <textarea id="requestPayload" rows="14"></textarea>
-      </section>
-      <section>
-        <h2>9) 接口导航</h2>
-        <div id="linkGroups" class="link-groups"></div>
-      </section>
-    </details>
-  </main>
+    </aside>
+  </div>
 
   <div id="statusModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="statusModalTitle">
     <div class="modal-card">
