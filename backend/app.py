@@ -534,6 +534,11 @@ async def webhook_terminal_events(request: Request) -> JSONResponse:
     return await _handle_incoming_webhook(request, "terminal_notify_received", "terminal_event")
 
 
+@app.post("/terminal-events/sunbay")
+async def terminal_events_sunbay(request: Request) -> JSONResponse:
+    return await _handle_incoming_webhook(request, "terminal_notify_received", "terminal_event")
+
+
 @app.get("/api/healthz")
 async def healthz() -> JSONResponse:
     return JSONResponse({"ok": True, "time": int(time.time())})
