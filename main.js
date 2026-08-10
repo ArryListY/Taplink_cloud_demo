@@ -355,6 +355,7 @@ function formatMoney(amountCents) {
 
 function getBaseUrl() {
   const env = el.envType.value;
+  if (env === "uat") return "https://open.sunbay-uat.us";
   if (env === "production") return "https://open.sunbay.us";
   if (env === "sandbox") return "https://open-sandbox.sunbay.us";
   return el.customBaseUrl.value || "";

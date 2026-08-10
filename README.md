@@ -11,7 +11,7 @@
 - 终端事件：Cloud 模式终端事件订阅状态加载与事件流展示（Mock 序列 + Real SSE）
 - 文档导航：对接 llms 索引中的其他公开接口入口
 
-## 快速使用
+## 快速使用（仅前端静态）
 
 1. 直接双击 `index.html` 在浏览器打开。
 2. 或在目录下启动静态服务：
@@ -23,11 +23,34 @@ python3 -m http.server 5173
 
 然后访问 `http://localhost:5173`。
 
+## 启动后端联调（推荐）
+
+```bash
+cd /Users/sm4306/StudioProjects/taplink-cloud-demo
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+export DINGTALK_WEBHOOK_URL='https://oapi.dingtalk.com/robot/send?access_token=你的token'
+export DINGTALK_SECRET='你的SEC密钥'
+# 可选：是否@所有人，默认 false
+export DINGTALK_AT_ALL='false'
+
+uvicorn backend.app:app --host 0.0.0.0 --port 8000
+```
+
+然后访问 `http://localhost:8000`。
+
+说明：
+- 后端收到 `POST /webhook/sunbay` 后，会自动把通知转发到钉钉机器人。
+- 若未配置 `DINGTALK_WEBHOOK_URL`，系统会跳过转发，并在事件流中写入原因。
+
 ## 文件结构
 
 - `index.html`：页面结构
 - `style.css`：UI 样式
 - `main.js`：Demo 业务逻辑
+- `backend/app.py`：后端代理、Webhook 接收、SSE、钉钉自动转发
 
 ## Real 模式注意事项
 

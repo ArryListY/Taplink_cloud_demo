@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -17,6 +18,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 WEBHOOK_SECRET = os.getenv("SUNBAY_WEBHOOK_SECRET", "")
+DINGTALK_WEBHOOK_URL = os.getenv("DINGTALK_WEBHOOK_URL", "")
+DINGTALK_SECRET = os.getenv("DINGTALK_SECRET", "")
+DINGTALK_AT_ALL = os.getenv("DINGTALK_AT_ALL", "false").lower() == "true"
 
 
 class EventBus:
@@ -63,7 +67,7 @@ class TerminalSubscriptionState:
 
 class ProxyRequest(BaseModel):
     mode: str = Field(default="real")
-    base_url: str = Field(default="https://open-sandbox.sunbay.us")
+    base_url: str = Field(default="https://open.sunbay-uat.us")
     method: str
     path: str
     headers: dict[str, str] = Field(default_factory=dict)
@@ -73,7 +77,7 @@ class ProxyRequest(BaseModel):
 
 class SubscribeRequest(BaseModel):
     mode: str = Field(default="real")
-    base_url: str = Field(default="https://open-sandbox.sunbay.us")
+    base_url: str = Field(default="https://open.sunbay-uat.us")
     event_path: str = Field(default="/v1/semi-integration/terminal-events/subscribe")
     merchant_id: str
     terminal_sn: str
@@ -119,6 +123,64 @@ def _mask_headers(headers: dict[str, str]) -> dict[str, str]:
         else:
             masked[key] = value
     return masked
+
+
+def _build_dingtalk_signed_url(webhook_url: str, secret: str) -> str:
+    if not webhook_url:
+        return ""
+    if not secret:
+        return webhook_url
+
+    timestamp = str(int(time.time() * 1000))
+    sign_input = f"{timestamp}\n{secret}".encode("utf-8")
+    sign = base64.b64encode(hmac.new(secret.encode("utf-8"), sign_input, hashlib.sha256).digest()).decode("utf-8")
+
+    parts = urlsplit(webhook_url)
+    merged = dict(parse_qsl(parts.query, keep_blank_values=True))
+    merged["timestamp"] = timestamp
+    merged["sign"] = sign
+    query_str = urlencode(merged)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query_str, parts.fragment))
+
+
+async def _forward_to_dingtalk(source_payload: dict[str, Any], event_type: str) -> dict[str, Any]:
+    if not DINGTALK_WEBHOOK_URL:
+        return {"ok": False, "skipped": True, "reason": "DINGTALK_WEBHOOK_URL is empty"}
+
+    signed_url = _build_dingtalk_signed_url(DINGTALK_WEBHOOK_URL, DINGTALK_SECRET)
+    content = json.dumps(source_payload, ensure_ascii=False, indent=2)
+    title = f"Sunbay Webhook {event_type}"
+    text = (
+        f"### {title}\n"
+        f"- Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}\n"
+        f"- Event: {event_type}\n"
+        f"\n"
+        f"```json\n{content}\n```"
+    )
+    body = {
+        "msgtype": "markdown",
+        "markdown": {
+            "title": title,
+            "text": text,
+        },
+        "at": {
+            "isAtAll": DINGTALK_AT_ALL,
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(signed_url, json=body)
+    result_text = response.text
+    try:
+        result_data: Any = response.json()
+    except Exception:  # noqa: BLE001
+        result_data = result_text
+
+    return {
+        "ok": response.is_success,
+        "statusCode": response.status_code,
+        "data": result_data,
+    }
 
 
 @app.post("/api/proxy")
@@ -384,17 +446,24 @@ async def webhook_sunbay(request: Request) -> JSONResponse:
     except Exception:  # noqa: BLE001
         payload = {"raw": raw.decode("utf-8", errors="replace")}
 
-    await bus.publish(
-        "webhook_received",
-        {
-            "headers": {
-                "x-request-id": request.headers.get("x-request-id", ""),
-                "x-event-type": request.headers.get("x-event-type", ""),
-                "x-sunbay-signature": "present" if signature else "",
-            },
-            "payload": payload,
+    webhook_event = {
+        "headers": {
+            "x-request-id": request.headers.get("x-request-id", ""),
+            "x-event-type": request.headers.get("x-event-type", ""),
+            "x-sunbay-signature": "present" if signature else "",
         },
-    )
+        "payload": payload,
+    }
+
+    await bus.publish("webhook_received", webhook_event)
+
+    event_type = webhook_event["headers"].get("x-event-type") or "unknown"
+    try:
+        forward_result = await _forward_to_dingtalk(webhook_event, event_type)
+        await bus.publish("dingtalk_forward", forward_result)
+    except Exception as exc:  # noqa: BLE001
+        await bus.publish("dingtalk_forward_error", {"error": str(exc)})
+
     return JSONResponse({"code": "0", "message": "received"})
 
 
