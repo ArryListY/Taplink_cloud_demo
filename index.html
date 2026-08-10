@@ -10,29 +10,20 @@
   <div class="bg-grid"></div>
   <main class="layout">
     <header class="hero">
-      <h1>TapLink Cloud Checkout 控制台</h1>
-      <p>独立 Demo：参数配置、模拟商品、SUNBAY API 调试、Cloud 终端事件订阅。</p>
+      <h1>TapLink 商户收银 Demo</h1>
+      <p>面向商户场景的收银演示页：商品下单、云端收单、终端事件回传与通知联动。</p>
       <div class="status-row">
-        <span id="modeBadge" class="badge">Mode: MOCK</span>
+        <span id="modeBadge" class="badge">收银模式: REAL</span>
         <span id="eventBadge" class="badge idle">事件状态: 未订阅</span>
       </div>
     </header>
 
     <section class="grid two-col">
       <article class="card">
-        <h2>1) 参数配置</h2>
+        <h2>1) 商户与连接配置</h2>
         <div class="field-grid">
           <label>Demo Backend URL
             <input id="backendUrl" value="http://127.0.0.1:8000" />
-          </label>
-          <label>Webhook 接收地址（部署后回填到 SUNBAY）
-            <input id="webhookEndpoint" readonly />
-          </label>
-          <label>调用模式
-            <select id="runMode">
-              <option value="mock">Mock</option>
-              <option value="real">Real</option>
-            </select>
           </label>
           <label>环境
             <select id="envType">
@@ -61,7 +52,7 @@
             <input id="currency" value="USD" maxlength="3" />
           </label>
           <label>Notify URL
-            <input id="notifyUrl" value="https://merchant.example.com/webhook" />
+            <input id="notifyUrl" value="http://47.77.239.198/webhook/sunbay" readonly />
           </label>
           <label>Webhook Secret（可选）
             <input id="webhookSecret" placeholder="签名密钥，仅在后端配置启用校验" />
@@ -69,20 +60,11 @@
           <label>Merchant Return URL
             <input id="returnUrl" value="https://merchant.example.com/result" />
           </label>
-          <label>Tax (cents)
-            <input id="taxAmount" type="number" value="0" min="0" />
-          </label>
-          <label>Tip (cents)
-            <input id="tipAmount" type="number" value="0" min="0" />
-          </label>
-          <label>Surcharge (cents)
-            <input id="surchargeAmount" type="number" value="0" min="0" />
-          </label>
         </div>
       </article>
 
       <article class="card">
-        <h2>2) 模拟商户商品</h2>
+        <h2>2) 收银商品</h2>
         <div id="productList" class="product-list"></div>
         <div class="totals">
           <div><span>Order Amount</span><strong id="orderAmountText">$0.00</strong></div>
@@ -93,24 +75,36 @@
 
     <section class="grid two-col">
       <article class="card">
-        <h2>3) 接口选择</h2>
-        <div id="apiList" class="api-list"></div>
+        <h2>3) 收银动作</h2>
+        <div class="primary-actions" id="primaryActions">
+          <button class="action-btn" data-action="sale" type="button">收款</button>
+          <button class="action-btn" data-action="void" type="button">撤销</button>
+          <button class="action-btn" data-action="refund" type="button">退款</button>
+          <button class="action-btn" data-action="query" type="button">查单</button>
+        </div>
+        <div class="secondary-box">
+          <label>更多接口（二级菜单）
+            <select id="secondaryApi"></select>
+          </label>
+          <button id="runSecondaryBtn" class="btn ghost" type="button">执行二级接口</button>
+        </div>
       </article>
 
       <article class="card">
-        <h2>4) 请求载荷</h2>
+        <h2>4) 交易状态追踪</h2>
+        <div id="txnStatusPanel" class="txn-status idle">
+          <div><strong>当前交易:</strong> <span id="txnRef">-</span></div>
+          <div><strong>请求流水:</strong> <span id="txnReq">-</span></div>
+          <div><strong>状态:</strong> <span id="txnState">未开始</span></div>
+        </div>
+        <p class="hint">系统会通过 terminalEventNotifyUrl 对应通知持续刷新，直到交易终态。</p>
+
+        <h2 style="margin-top:14px;">5) 交易执行结果</h2>
         <div class="toolbar">
-          <button id="rebuildBtn" class="btn ghost">重建请求</button>
-          <button id="runBtn" class="btn">执行接口</button>
+          <button id="rebuildBtn" class="btn ghost">按当前配置重建交易参数</button>
+          <button id="runBtn" class="btn">发起当前交易</button>
         </div>
         <p class="hint" id="endpointHint"></p>
-        <textarea id="requestPayload" rows="16"></textarea>
-      </article>
-    </section>
-
-    <section class="grid two-col">
-      <article class="card">
-        <h2>5) 响应结果</h2>
         <textarea id="responsePayload" rows="16" readonly></textarea>
       </article>
 
@@ -130,8 +124,14 @@
     </section>
 
     <section class="card">
-      <h2>7) Sunbay 对外接口导航（基于 llms 文档索引）</h2>
-      <p class="hint">说明：半集成交易、结算、查询、线上 checkout/direct-payment/refund 已在本页面可直接调试；其余入口可点击跳转查看。</p>
+      <h2>7) 开发者请求参数（可选）</h2>
+      <p class="hint">如需精细调试可编辑 JSON；普通演示可直接使用“发起交易”。</p>
+      <textarea id="requestPayload" rows="14"></textarea>
+    </section>
+
+    <section class="card">
+      <h2>8) Sunbay 对外接口导航</h2>
+      <p class="hint">说明：已内置常用收银 API；其余能力可通过文档入口查看。</p>
       <div id="linkGroups" class="link-groups"></div>
     </section>
   </main>

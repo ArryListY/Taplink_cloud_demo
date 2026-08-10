@@ -1,10 +1,10 @@
 const API_ITEMS = [
   {
     id: "sale",
-    group: "In-Person / Semi-Integration",
+    label: "收款",
+    group: "primary",
     method: "POST",
     path: "/v1/semi-integration/transaction/sale",
-    summary: "Sale",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
@@ -14,97 +14,15 @@ const API_ITEMS = [
       description: ctx.description,
       terminalSn: ctx.terminalSn,
       notifyUrl: ctx.notifyUrl,
-    }),
-  },
-  {
-    id: "auth",
-    group: "In-Person / Semi-Integration",
-    method: "POST",
-    path: "/v1/semi-integration/transaction/auth",
-    summary: "Auth",
-    build: (ctx) => ({
-      appId: ctx.appId,
-      merchantId: ctx.merchantId,
-      referenceOrderId: ctx.orderId,
-      transactionRequestId: ctx.requestId,
-      amount: ctx.amount,
-      description: ctx.description,
-      terminalSn: ctx.terminalSn,
-      notifyUrl: ctx.notifyUrl,
-    }),
-  },
-  {
-    id: "forced-auth",
-    group: "In-Person / Semi-Integration",
-    method: "POST",
-    path: "/v1/semi-integration/transaction/forced-auth",
-    summary: "Forced Auth",
-    build: (ctx) => ({
-      appId: ctx.appId,
-      merchantId: ctx.merchantId,
-      referenceOrderId: ctx.orderId,
-      transactionRequestId: ctx.requestId,
-      amount: ctx.amount,
-      description: ctx.description,
-      terminalSn: ctx.terminalSn,
-      notifyUrl: ctx.notifyUrl,
-    }),
-  },
-  {
-    id: "incremental-auth",
-    group: "In-Person / Semi-Integration",
-    method: "POST",
-    path: "/v1/semi-integration/transaction/incremental-auth",
-    summary: "Incremental Auth",
-    build: (ctx) => ({
-      appId: ctx.appId,
-      merchantId: ctx.merchantId,
-      referenceOrderId: ctx.orderId,
-      transactionRequestId: ctx.requestId,
-      amount: { orderAmount: ctx.amount.orderAmount, priceCurrency: ctx.amount.priceCurrency },
-      terminalSn: ctx.terminalSn,
-      notifyUrl: ctx.notifyUrl,
-    }),
-  },
-  {
-    id: "post-auth",
-    group: "In-Person / Semi-Integration",
-    method: "POST",
-    path: "/v1/semi-integration/transaction/post-auth",
-    summary: "Post Auth",
-    build: (ctx) => ({
-      appId: ctx.appId,
-      merchantId: ctx.merchantId,
-      referenceOrderId: ctx.orderId,
-      transactionRequestId: ctx.requestId,
-      amount: ctx.amount,
-      terminalSn: ctx.terminalSn,
-      notifyUrl: ctx.notifyUrl,
-    }),
-  },
-  {
-    id: "refund",
-    group: "In-Person / Semi-Integration",
-    method: "POST",
-    path: "/v1/semi-integration/transaction/refund",
-    summary: "Refund",
-    build: (ctx) => ({
-      appId: ctx.appId,
-      merchantId: ctx.merchantId,
-      referenceOrderId: ctx.orderId,
-      transactionRequestId: ctx.requestId,
-      amount: { orderAmount: ctx.amount.orderAmount, priceCurrency: ctx.amount.priceCurrency },
-      terminalSn: ctx.terminalSn,
-      notifyUrl: ctx.notifyUrl,
-      reason: "Customer request",
+      terminalEventNotifyUrl: ctx.notifyUrl,
     }),
   },
   {
     id: "void",
-    group: "In-Person / Semi-Integration",
+    label: "撤销",
+    group: "primary",
     method: "POST",
     path: "/v1/semi-integration/transaction/void",
-    summary: "Void",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
@@ -112,46 +30,150 @@ const API_ITEMS = [
       transactionRequestId: ctx.requestId,
       terminalSn: ctx.terminalSn,
       notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
+    }),
+  },
+  {
+    id: "refund",
+    label: "退款",
+    group: "primary",
+    method: "POST",
+    path: "/v1/semi-integration/transaction/refund",
+    build: (ctx) => ({
+      appId: ctx.appId,
+      merchantId: ctx.merchantId,
+      referenceOrderId: ctx.orderId,
+      transactionRequestId: ctx.requestId,
+      amount: { orderAmount: ctx.amount.orderAmount, priceCurrency: ctx.amount.priceCurrency },
+      terminalSn: ctx.terminalSn,
+      notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
+      reason: "Customer request",
+    }),
+  },
+  {
+    id: "query",
+    label: "查单",
+    group: "primary",
+    method: "GET",
+    path: "/v1/semi-integration/query",
+    build: (ctx) => ({
+      appId: ctx.appId,
+      merchantId: ctx.merchantId,
+      referenceOrderId: ctx.orderId,
+      terminalSn: ctx.terminalSn,
+    }),
+  },
+  {
+    id: "auth",
+    label: "Auth",
+    group: "secondary",
+    method: "POST",
+    path: "/v1/semi-integration/transaction/auth",
+    build: (ctx) => ({
+      appId: ctx.appId,
+      merchantId: ctx.merchantId,
+      referenceOrderId: ctx.orderId,
+      transactionRequestId: ctx.requestId,
+      amount: ctx.amount,
+      description: ctx.description,
+      terminalSn: ctx.terminalSn,
+      notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
+    }),
+  },
+  {
+    id: "forced-auth",
+    label: "Forced Auth",
+    group: "secondary",
+    method: "POST",
+    path: "/v1/semi-integration/transaction/forced-auth",
+    build: (ctx) => ({
+      appId: ctx.appId,
+      merchantId: ctx.merchantId,
+      referenceOrderId: ctx.orderId,
+      transactionRequestId: ctx.requestId,
+      amount: ctx.amount,
+      description: ctx.description,
+      terminalSn: ctx.terminalSn,
+      notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
+    }),
+  },
+  {
+    id: "incremental-auth",
+    label: "Incremental Auth",
+    group: "secondary",
+    method: "POST",
+    path: "/v1/semi-integration/transaction/incremental-auth",
+    build: (ctx) => ({
+      appId: ctx.appId,
+      merchantId: ctx.merchantId,
+      referenceOrderId: ctx.orderId,
+      transactionRequestId: ctx.requestId,
+      amount: { orderAmount: ctx.amount.orderAmount, priceCurrency: ctx.amount.priceCurrency },
+      terminalSn: ctx.terminalSn,
+      notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
+    }),
+  },
+  {
+    id: "post-auth",
+    label: "Post Auth",
+    group: "secondary",
+    method: "POST",
+    path: "/v1/semi-integration/transaction/post-auth",
+    build: (ctx) => ({
+      appId: ctx.appId,
+      merchantId: ctx.merchantId,
+      referenceOrderId: ctx.orderId,
+      transactionRequestId: ctx.requestId,
+      amount: ctx.amount,
+      terminalSn: ctx.terminalSn,
+      notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
     }),
   },
   {
     id: "abort",
-    group: "In-Person / Semi-Integration",
+    label: "Abort",
+    group: "secondary",
     method: "POST",
     path: "/v1/semi-integration/transaction/abort",
-    summary: "Abort",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
       terminalSn: ctx.terminalSn,
       reason: "USER_CANCEL",
+      terminalEventNotifyUrl: ctx.notifyUrl,
     }),
   },
   {
     id: "tip-adjust",
-    group: "In-Person / Semi-Integration",
+    label: "Tip Adjust",
+    group: "secondary",
     method: "POST",
     path: "/v1/semi-integration/transaction/tip-adjust",
-    summary: "Tip Adjust",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
       referenceOrderId: ctx.orderId,
       transactionRequestId: ctx.requestId,
       amount: {
-        tipAmount: ctx.amount.tipAmount,
+        tipAmount: 0,
         priceCurrency: ctx.amount.priceCurrency,
       },
       terminalSn: ctx.terminalSn,
       notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
     }),
   },
   {
     id: "batch-query",
-    group: "In-Person / Settlement",
+    label: "Batch Query",
+    group: "secondary",
     method: "GET",
     path: "/v1/semi-integration/settlement/batch-query",
-    summary: "Batch Query",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
@@ -161,10 +183,10 @@ const API_ITEMS = [
   },
   {
     id: "batch-close",
-    group: "In-Person / Settlement",
+    label: "Batch Close",
+    group: "secondary",
     method: "POST",
     path: "/v1/semi-integration/settlement/batch-close",
-    summary: "Batch Close",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
@@ -172,27 +194,15 @@ const API_ITEMS = [
       terminalSn: ctx.terminalSn,
       printReceipt: "AUTO",
       notifyUrl: ctx.notifyUrl,
-    }),
-  },
-  {
-    id: "query",
-    group: "In-Person / Query",
-    method: "GET",
-    path: "/v1/semi-integration/query",
-    summary: "Query Transaction",
-    build: (ctx) => ({
-      appId: ctx.appId,
-      merchantId: ctx.merchantId,
-      referenceOrderId: ctx.orderId,
-      terminalSn: ctx.terminalSn,
+      terminalEventNotifyUrl: ctx.notifyUrl,
     }),
   },
   {
     id: "checkout-create-session",
-    group: "Online / Checkout",
+    label: "Create Checkout Session",
+    group: "secondary",
     method: "POST",
     path: "/v1/checkout/create-session",
-    summary: "Create Checkout Session",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
@@ -203,14 +213,15 @@ const API_ITEMS = [
       productList: ctx.productList,
       merchantReturnUrl: ctx.returnUrl,
       notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
     }),
   },
   {
     id: "checkout-sale",
-    group: "Online / Direct Payment",
+    label: "Direct Payment",
+    group: "secondary",
     method: "POST",
     path: "/v1/payment",
-    summary: "Direct Payment",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
@@ -221,14 +232,15 @@ const API_ITEMS = [
       paymentMethod: { category: "CARD", id: "VISA" },
       token: "DIGITAL_WALLET_TOKEN",
       notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
     }),
   },
   {
     id: "checkout-refund",
-    group: "Online / Refund",
+    label: "Online Refund",
+    group: "secondary",
     method: "POST",
     path: "/v1/refund",
-    summary: "Online Refund",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
@@ -240,6 +252,7 @@ const API_ITEMS = [
       },
       reason: "Customer request",
       notifyUrl: ctx.notifyUrl,
+      terminalEventNotifyUrl: ctx.notifyUrl,
     }),
   },
 ];
@@ -254,36 +267,12 @@ const LINK_GROUPS = [
     ],
   },
   {
-    title: "线下支付 API",
+    title: "常用接口参考",
     links: [
       ["Sale", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/sale"],
-      ["Auth", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/auth"],
-      ["Forced Auth", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/forced-auth"],
-      ["Incremental Auth", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/incremental-auth"],
-      ["Post Auth", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/post-auth"],
-      ["Refund", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/refund"],
       ["Void", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/void"],
-      ["Abort", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/abort"],
-      ["Tip Adjust", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/tip-adjust"],
-    ],
-  },
-  {
-    title: "线上支付 API",
-    links: [
-      ["创建支付会话", "https://docs.sunbay.us/zh/refspec/online/checkout/checkout-api-integration"],
-      ["主动关闭会话", "https://docs.sunbay.us/zh/refspec/online/checkout/expire-session"],
-      ["直接支付", "https://docs.sunbay.us/zh/refspec/online/direct-payment"],
-      ["线上退款", "https://docs.sunbay.us/zh/refspec/online/refund"],
-    ],
-  },
-  {
-    title: "查询与商户能力",
-    links: [
-      ["查询交易明细", "https://docs.sunbay.us/zh/refspec/query/query-transaction"],
-      ["查询商户信息", "https://docs.sunbay.us/zh/refspec/merchants/retrieve-merchant"],
-      ["查询商户终端列表", "https://docs.sunbay.us/zh/refspec/merchants/list-merchant-terminals"],
-      ["下载交易对账单", "https://docs.sunbay.us/zh/refspec/reconciliation/transaction-statement"],
-      ["下载结算对账单", "https://docs.sunbay.us/zh/refspec/reconciliation/settlement-statement"],
+      ["Refund", "https://docs.sunbay.us/zh/refspec/in-person/semi-integration/refund"],
+      ["Query", "https://docs.sunbay.us/zh/refspec/query/query-transaction"],
     ],
   },
 ];
@@ -295,12 +284,13 @@ const PRODUCTS = [
   { id: "p4", name: "Cold Brew", priceCents: 680, qty: 0 },
 ];
 
-let selectedApiId = API_ITEMS[0].id;
-let eventTimer = null;
+let selectedApiId = "sale";
 let eventSource = null;
+let activeTxn = null;
+const STORAGE_KEY = "taplink_cloud_demo_config_v1";
 
 const el = {
-  runMode: document.getElementById("runMode"),
+  backendUrl: document.getElementById("backendUrl"),
   envType: document.getElementById("envType"),
   customBaseUrl: document.getElementById("customBaseUrl"),
   apiKey: document.getElementById("apiKey"),
@@ -310,13 +300,12 @@ const el = {
   currency: document.getElementById("currency"),
   notifyUrl: document.getElementById("notifyUrl"),
   returnUrl: document.getElementById("returnUrl"),
-  taxAmount: document.getElementById("taxAmount"),
-  tipAmount: document.getElementById("tipAmount"),
-  surchargeAmount: document.getElementById("surchargeAmount"),
   productList: document.getElementById("productList"),
   orderAmountText: document.getElementById("orderAmountText"),
   totalAmountText: document.getElementById("totalAmountText"),
-  apiList: document.getElementById("apiList"),
+  primaryActions: document.getElementById("primaryActions"),
+  secondaryApi: document.getElementById("secondaryApi"),
+  runSecondaryBtn: document.getElementById("runSecondaryBtn"),
   endpointHint: document.getElementById("endpointHint"),
   requestPayload: document.getElementById("requestPayload"),
   responsePayload: document.getElementById("responsePayload"),
@@ -330,14 +319,54 @@ const el = {
   clearEventsBtn: document.getElementById("clearEventsBtn"),
   eventLog: document.getElementById("eventLog"),
   linkGroups: document.getElementById("linkGroups"),
+  txnStatusPanel: document.getElementById("txnStatusPanel"),
+  txnRef: document.getElementById("txnRef"),
+  txnReq: document.getElementById("txnReq"),
+  txnState: document.getElementById("txnState"),
 };
+
+function loadPersistedConfig() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const cfg = JSON.parse(raw);
+    if (cfg.backendUrl) el.backendUrl.value = cfg.backendUrl;
+    if (cfg.envType) el.envType.value = cfg.envType;
+    if (cfg.customBaseUrl) el.customBaseUrl.value = cfg.customBaseUrl;
+    if (cfg.apiKey) el.apiKey.value = cfg.apiKey;
+    if (cfg.appId) el.appId.value = cfg.appId;
+    if (cfg.merchantId) el.merchantId.value = cfg.merchantId;
+    if (cfg.terminalSn) el.terminalSn.value = cfg.terminalSn;
+    if (cfg.currency) el.currency.value = cfg.currency;
+    if (cfg.returnUrl) el.returnUrl.value = cfg.returnUrl;
+    if (cfg.eventUrl) el.eventUrl.value = cfg.eventUrl;
+  } catch {
+    // ignore malformed local storage
+  }
+}
+
+function persistConfig() {
+  const cfg = {
+    backendUrl: el.backendUrl.value,
+    envType: el.envType.value,
+    customBaseUrl: el.customBaseUrl.value,
+    apiKey: el.apiKey.value,
+    appId: el.appId.value,
+    merchantId: el.merchantId.value,
+    terminalSn: el.terminalSn.value,
+    currency: el.currency.value,
+    returnUrl: el.returnUrl.value,
+    eventUrl: el.eventUrl.value,
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  } catch {
+    // storage may be unavailable in private mode
+  }
+}
 
 function uid(prefix) {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 9000 + 1000)}`;
-}
-
-function cents(value) {
-  return Math.max(0, Number(value) || 0);
 }
 
 function getCurrency() {
@@ -361,21 +390,28 @@ function getBaseUrl() {
   return el.customBaseUrl.value || "";
 }
 
+function getBackendUrl() {
+  return (el.backendUrl.value || "http://127.0.0.1:8000").trim().replace(/\/$/, "");
+}
+
+function buildAuthorization() {
+  const key = (el.apiKey.value || "").trim();
+  if (!key) return "";
+  return key.startsWith("Bearer ") ? key : `Bearer ${key}`;
+}
+
 function computeAmount() {
   const orderAmount = PRODUCTS.reduce((sum, p) => sum + p.priceCents * p.qty, 0);
-  const taxAmount = cents(el.taxAmount.value);
-  const tipAmount = cents(el.tipAmount.value);
-  const surchargeAmount = cents(el.surchargeAmount.value);
-  const totalAmount = orderAmount + taxAmount + tipAmount + surchargeAmount;
+  const totalAmount = orderAmount;
 
   el.orderAmountText.textContent = formatMoney(orderAmount);
   el.totalAmountText.textContent = formatMoney(totalAmount);
 
   return {
     orderAmount,
-    taxAmount,
-    tipAmount,
-    surchargeAmount,
+    taxAmount: 0,
+    tipAmount: 0,
+    surchargeAmount: 0,
     totalAmount,
     priceCurrency: getCurrency(),
   };
@@ -391,9 +427,9 @@ function productListPayload() {
 
 function buildContext() {
   const amount = computeAmount();
-  const list = productListPayload();
-  const description = list.length
-    ? list.map((it) => `${it.name} x${it.num}`).join(", ")
+  const productList = productListPayload();
+  const description = productList.length
+    ? productList.map((it) => `${it.name} x${it.num}`).join(", ")
     : "Cloud checkout payment";
 
   return {
@@ -404,19 +440,22 @@ function buildContext() {
     returnUrl: el.returnUrl.value,
     amount,
     description,
-    productList: list,
+    productList,
     orderId: uid("ORDER"),
     requestId: uid("REQ"),
   };
 }
 
-function groupedApis() {
-  const map = new Map();
-  for (const item of API_ITEMS) {
-    if (!map.has(item.group)) map.set(item.group, []);
-    map.get(item.group).push(item);
-  }
-  return Array.from(map.entries());
+function selectedApi() {
+  return API_ITEMS.find((api) => api.id === selectedApiId) || API_ITEMS[0];
+}
+
+function rebuildRequest(apiId = selectedApiId) {
+  selectedApiId = apiId;
+  const api = selectedApi();
+  const payload = api.build(buildContext());
+  el.requestPayload.value = JSON.stringify(payload, null, 2);
+  el.endpointHint.textContent = `${api.method} ${getBaseUrl()}${api.path}`;
 }
 
 function renderProducts() {
@@ -439,28 +478,14 @@ function renderProducts() {
   }
 }
 
-function renderApiList() {
-  el.apiList.innerHTML = "";
-  for (const [group, list] of groupedApis()) {
-    const title = document.createElement("div");
-    title.className = "api-group";
-    title.textContent = group;
-    el.apiList.appendChild(title);
-
-    for (const api of list) {
-      const b = document.createElement("button");
-      b.className = `api-item ${api.id === selectedApiId ? "active" : ""}`;
-      b.type = "button";
-      b.dataset.id = api.id;
-      b.innerHTML = `
-        <span class="method ${api.method.toLowerCase()}">${api.method}</span>
-        <span>
-          <strong>${api.summary}</strong>
-          <span class="path">${api.path}</span>
-        </span>
-      `;
-      el.apiList.appendChild(b);
-    }
+function renderSecondaryMenu() {
+  const secondaryItems = API_ITEMS.filter((item) => item.group === "secondary");
+  el.secondaryApi.innerHTML = "";
+  for (const item of secondaryItems) {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = `${item.label} (${item.method} ${item.path})`;
+    el.secondaryApi.appendChild(option);
   }
 }
 
@@ -475,23 +500,6 @@ function renderLinks() {
     wrap.innerHTML = `<h3>${group.title}</h3><ul>${list}</ul>`;
     el.linkGroups.appendChild(wrap);
   }
-}
-
-function selectedApi() {
-  return API_ITEMS.find((api) => api.id === selectedApiId) || API_ITEMS[0];
-}
-
-function rebuildRequest() {
-  const api = selectedApi();
-  const ctx = buildContext();
-  const body = api.build(ctx);
-  el.requestPayload.value = JSON.stringify(body, null, 2);
-  el.endpointHint.textContent = `${api.method} ${getBaseUrl()}${api.path}`;
-}
-
-function setModeBadge() {
-  const mode = el.runMode.value.toUpperCase();
-  el.modeBadge.textContent = `Mode: ${mode}`;
 }
 
 function setEventBadge(state) {
@@ -512,48 +520,118 @@ function logEvent(text) {
   el.eventLog.prepend(item);
 }
 
-function parsePayload() {
+function updateTxnStatus(state, payload = {}) {
+  const status = String(state || "").toUpperCase();
+  const isSuccess = ["S", "SUCCESS", "APPROVED", "COMPLETED"].includes(status);
+  const isFailed = ["F", "FAILED", "DECLINED", "CANCELLED", "VOIDED", "ABORTED"].includes(status);
+
+  el.txnRef.textContent = payload.referenceOrderId || (activeTxn && activeTxn.referenceOrderId) || "-";
+  el.txnReq.textContent = payload.transactionRequestId || (activeTxn && activeTxn.transactionRequestId) || "-";
+
+  if (isSuccess) {
+    el.txnState.textContent = `已完成(${status})`;
+    el.txnStatusPanel.className = "txn-status success";
+    return;
+  }
+  if (isFailed) {
+    el.txnState.textContent = `失败/终止(${status})`;
+    el.txnStatusPanel.className = "txn-status failed";
+    return;
+  }
+
+  el.txnState.textContent = status ? `进行中(${status})` : "处理中";
+  el.txnStatusPanel.className = "txn-status processing";
+}
+
+function parsePayloadJson(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function handleEventData(raw) {
+  const parsed = parsePayloadJson(raw);
+  if (!parsed || !parsed.type) return;
+
+  if (parsed.type === "terminal_event") {
+    const payload = parsed.payload || {};
+    const embedded = typeof payload.data === "string" ? parsePayloadJson(payload.data) : null;
+    const txn = embedded && typeof embedded === "object" ? embedded : payload;
+    const state = txn.transactionStatus || txn.event || "PROCESSING";
+    if (activeTxn) {
+      updateTxnStatus(state, txn);
+    }
+  }
+
+  if (parsed.type === "webhook_received") {
+    const body = (parsed.payload && parsed.payload.payload) || {};
+    const matchesTxn =
+      !activeTxn ||
+      body.transactionRequestId === activeTxn.transactionRequestId ||
+      body.referenceOrderId === activeTxn.referenceOrderId;
+
+    if (matchesTxn) {
+      const state = body.transactionStatus || body.transactionResultCode || "PROCESSING";
+      updateTxnStatus(state, body);
+      logEvent(`[交易状态] ${state} requestId=${body.transactionRequestId || "-"}`);
+    }
+  }
+}
+
+function parseRequestPayload() {
   const text = el.requestPayload.value.trim();
   if (!text) return {};
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error("请求载荷不是有效 JSON");
+    throw new Error("请求参数不是有效 JSON");
   }
 }
 
-async function runRequest() {
-  const api = selectedApi();
-  const mode = el.runMode.value;
-  let payload;
+function buildGetQuery(payload) {
+  const query = {};
+  for (const [key, value] of Object.entries(payload || {})) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === "object") continue;
+    if (String(value).trim() === "") continue;
+    query[key] = value;
+  }
+  return query;
+}
 
+async function runRequest(apiId = selectedApiId) {
+  selectedApiId = apiId;
+  const api = selectedApi();
+
+  let payload;
   try {
-    payload = parsePayload();
+    payload = parseRequestPayload();
   } catch (err) {
     el.responsePayload.value = JSON.stringify({ error: err.message }, null, 2);
     return;
   }
 
+  // Keep request identifiers fresh at execution time.
+  const freshContext = buildContext();
+  payload.transactionRequestId = freshContext.requestId;
+  if (api.id !== "query" && api.id !== "batch-query") {
+    payload.referenceOrderId = freshContext.orderId;
+  }
+  if (payload.notifyUrl !== undefined) payload.notifyUrl = freshContext.notifyUrl;
+  if (payload.terminalEventNotifyUrl !== undefined) payload.terminalEventNotifyUrl = freshContext.notifyUrl;
+
+  el.requestPayload.value = JSON.stringify(payload, null, 2);
+
+  activeTxn = {
+    referenceOrderId: payload.referenceOrderId || "-",
+    transactionRequestId: payload.transactionRequestId || "-",
+  };
+  updateTxnStatus("PROCESSING", activeTxn);
+
   el.runBtn.disabled = true;
   el.runBtn.textContent = "执行中...";
-
-  if (mode === "mock") {
-    await new Promise((r) => setTimeout(r, 450));
-    const mock = {
-      mode: "mock",
-      endpoint: `${api.method} ${api.path}`,
-      acceptedAt: new Date().toISOString(),
-      note: "请求已受理（不代表交易成功），请通过事件流或 query 接口确认最终状态",
-      requestPreview: payload,
-      transactionId: uid("TXN"),
-      status: "PROCESSING",
-    };
-    el.responsePayload.value = JSON.stringify(mock, null, 2);
-    logEvent(`请求已派发: ${api.method} ${api.path}`);
-    el.runBtn.disabled = false;
-    el.runBtn.textContent = "执行接口";
-    return;
-  }
 
   const headers = {
     "Content-Type": "application/json",
@@ -561,18 +639,29 @@ async function runRequest() {
     "X-Client-Request-Id": uid("CID"),
   };
 
-  if (el.apiKey.value.trim()) {
-    headers.Authorization = `Bearer ${el.apiKey.value.trim()}`;
-  }
+  const auth = buildAuthorization();
+  if (auth) headers.Authorization = auth;
 
-  const url = `${getBaseUrl()}${api.path}`;
+  const backend = getBackendUrl();
+  const query = api.method === "GET" ? buildGetQuery(payload) : {};
+  const requestBody = api.method === "GET" ? {} : payload;
+
   try {
-    const res = await fetch(url, {
-      method: api.method,
-      headers,
-      body: api.method === "GET" ? undefined : JSON.stringify(payload),
+    const response = await fetch(`${backend}/api/proxy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "real",
+        base_url: getBaseUrl(),
+        method: api.method,
+        path: api.path,
+        headers,
+        payload: requestBody,
+        query,
+      }),
     });
-    const raw = await res.text();
+
+    const raw = await response.text();
     let data = raw;
     try {
       data = raw ? JSON.parse(raw) : null;
@@ -584,14 +673,24 @@ async function runRequest() {
       {
         mode: "real",
         endpoint: `${api.method} ${api.path}`,
-        httpStatus: res.status,
-        ok: res.ok,
+        httpStatus: response.status,
+        ok: response.ok,
         data,
       },
       null,
-      2
+      2,
     );
-    logEvent(`HTTP ${res.status}: ${api.method} ${api.path}`);
+
+    logEvent(`HTTP ${response.status}: ${api.method} ${api.path}`);
+
+    const business = data && data.data ? data.data : data;
+    const earlyState = business && (business.transactionStatus || business.status || business.code);
+    if (earlyState) {
+      updateTxnStatus(earlyState, {
+        referenceOrderId: payload.referenceOrderId,
+        transactionRequestId: payload.transactionRequestId,
+      });
+    }
   } catch (err) {
     el.responsePayload.value = JSON.stringify(
       {
@@ -600,20 +699,17 @@ async function runRequest() {
         error: err.message || "请求失败",
       },
       null,
-      2
+      2,
     );
-    logEvent("真实请求失败，请检查 CORS、鉴权和网络可达性");
+    logEvent("真实请求失败，请检查后端、鉴权和网络可达性");
+    updateTxnStatus("FAILED", activeTxn || {});
   } finally {
     el.runBtn.disabled = false;
-    el.runBtn.textContent = "执行接口";
+    el.runBtn.textContent = "发起当前交易";
   }
 }
 
 function stopEvents() {
-  if (eventTimer) {
-    clearInterval(eventTimer);
-    eventTimer = null;
-  }
   if (eventSource) {
     eventSource.close();
     eventSource = null;
@@ -625,129 +721,153 @@ function subscribeEvents() {
   setEventBadge("connecting");
   logEvent("开始订阅终端事件");
 
-  const mode = el.runMode.value;
-  if (mode === "mock") {
-    const seq = [
-      "REQUEST_DISPATCHED",
-      "TERMINAL_ONLINE",
-      "CARD_TAPPED",
-      "PIN_ENTRY",
-      "ONLINE_PROCESSING",
-      "APPROVED",
-    ];
-    let index = 0;
-    setEventBadge("connected");
-    logEvent("Mock 事件连接成功");
-    eventTimer = setInterval(() => {
-      logEvent(`[${el.terminalSn.value}] ${seq[index % seq.length]}`);
-      index += 1;
-    }, 1400);
-    return;
-  }
+  const backend = getBackendUrl();
+  const auth = buildAuthorization();
 
-  try {
-    const eventUrl = el.eventUrl.value.trim();
-    const base = eventUrl.startsWith("http") ? eventUrl : `${getBaseUrl()}${eventUrl}`;
-    const sep = base.includes("?") ? "&" : "?";
-    const full = `${base}${sep}merchantId=${encodeURIComponent(el.merchantId.value)}&terminalSn=${encodeURIComponent(el.terminalSn.value)}`;
+  fetch(`${backend}/api/terminal-events/subscribe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      mode: "real",
+      base_url: getBaseUrl(),
+      event_path: el.eventUrl.value.trim(),
+      merchant_id: el.merchantId.value,
+      terminal_sn: el.terminalSn.value,
+      authorization: auth || null,
+    }),
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`订阅接口失败: HTTP ${res.status} ${body}`);
+      }
 
-    eventSource = new EventSource(full);
-    eventSource.onopen = () => {
-      setEventBadge("connected");
-      logEvent(`SSE connected: ${full}`);
-    };
-    eventSource.onmessage = (ev) => {
-      logEvent(`[${el.terminalSn.value}] ${ev.data}`);
-    };
-    eventSource.onerror = () => {
+      eventSource = new EventSource(`${backend}/api/events/stream`);
+      eventSource.onopen = () => {
+        setEventBadge("connected");
+        logEvent("SSE 已连接，等待终端与 webhook 状态");
+      };
+      eventSource.onmessage = (ev) => {
+        if (ev.data && ev.data !== "{}") {
+          handleEventData(ev.data);
+        }
+      };
+      eventSource.addEventListener("terminal_status", (ev) => {
+        logEvent(`[terminal_status] ${ev.data}`);
+        handleEventData(ev.data);
+      });
+      eventSource.addEventListener("terminal_event", (ev) => {
+        logEvent(`[terminal_event] ${ev.data}`);
+        handleEventData(ev.data);
+      });
+      eventSource.addEventListener("webhook_received", (ev) => {
+        logEvent(`[webhook_received] ${ev.data}`);
+        handleEventData(ev.data);
+      });
+      eventSource.onerror = () => {
+        setEventBadge("error");
+        logEvent("SSE 连接异常，请检查后端可达性、云端鉴权和事件地址");
+      };
+    })
+    .catch((err) => {
       setEventBadge("error");
-      logEvent("SSE 连接异常，请检查事件地址、鉴权和跨域");
-    };
-  } catch {
-    setEventBadge("error");
-    logEvent("创建事件订阅失败");
-  }
+      logEvent(err.message || "创建事件订阅失败");
+    });
 }
 
 function bindEvents() {
   el.productList.addEventListener("click", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    if (target.tagName !== "BUTTON") return;
+    if (!(target instanceof HTMLElement) || target.tagName !== "BUTTON") return;
 
-    const id = target.dataset.id;
-    const op = target.dataset.op;
-    const product = PRODUCTS.find((p) => p.id === id);
+    const product = PRODUCTS.find((p) => p.id === target.dataset.id);
     if (!product) return;
 
-    if (op === "add") product.qty += 1;
-    if (op === "sub") product.qty = Math.max(0, product.qty - 1);
+    if (target.dataset.op === "add") product.qty += 1;
+    if (target.dataset.op === "sub") product.qty = Math.max(0, product.qty - 1);
 
     renderProducts();
     computeAmount();
-    rebuildRequest();
+    rebuildRequest(selectedApiId);
   });
 
-  el.apiList.addEventListener("click", (event) => {
+  el.primaryActions.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    const button = target.closest("button.api-item");
+    const button = target.closest("button[data-action]");
     if (!button) return;
-    selectedApiId = button.dataset.id;
-    renderApiList();
-    rebuildRequest();
+
+    const apiId = button.getAttribute("data-action");
+    if (!apiId) return;
+
+    rebuildRequest(apiId);
+    runRequest(apiId);
   });
 
-  [
-    el.runMode,
-    el.envType,
-    el.customBaseUrl,
-    el.appId,
-    el.merchantId,
-    el.terminalSn,
-    el.currency,
-    el.notifyUrl,
-    el.returnUrl,
-    el.taxAmount,
-    el.tipAmount,
-    el.surchargeAmount,
-  ].forEach((node) => {
+  el.runSecondaryBtn.addEventListener("click", () => {
+    const apiId = el.secondaryApi.value;
+    if (!apiId) return;
+    rebuildRequest(apiId);
+    runRequest(apiId);
+  });
+
+  [el.envType, el.customBaseUrl, el.appId, el.merchantId, el.terminalSn, el.currency, el.notifyUrl, el.returnUrl].forEach((node) => {
     node.addEventListener("input", () => {
-      setModeBadge();
       computeAmount();
-      rebuildRequest();
+      rebuildRequest(selectedApiId);
+      persistConfig();
     });
     node.addEventListener("change", () => {
-      setModeBadge();
       computeAmount();
-      rebuildRequest();
+      rebuildRequest(selectedApiId);
+      persistConfig();
     });
   });
 
-  el.rebuildBtn.addEventListener("click", rebuildRequest);
-  el.runBtn.addEventListener("click", runRequest);
+  [el.backendUrl, el.apiKey, el.eventUrl].forEach((node) => {
+    node.addEventListener("input", persistConfig);
+    node.addEventListener("change", persistConfig);
+  });
+
+  el.rebuildBtn.addEventListener("click", () => rebuildRequest(selectedApiId));
+  el.runBtn.addEventListener("click", () => runRequest(selectedApiId));
 
   el.subBtn.addEventListener("click", subscribeEvents);
-  el.unsubBtn.addEventListener("click", () => {
+  el.unsubBtn.addEventListener("click", async () => {
     stopEvents();
     setEventBadge("idle");
     logEvent("终端事件订阅已停止");
+    try {
+      await fetch(`${getBackendUrl()}/api/terminal-events/unsubscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch {
+      logEvent("后端取消订阅调用失败（已停止前端流）");
+    }
   });
+
   el.clearEventsBtn.addEventListener("click", () => {
     el.eventLog.innerHTML = "";
+  });
+
+  el.secondaryApi.addEventListener("change", () => {
+    rebuildRequest(el.secondaryApi.value);
   });
 }
 
 function bootstrap() {
+  loadPersistedConfig();
   renderProducts();
-  renderApiList();
+  renderSecondaryMenu();
   renderLinks();
-  setModeBadge();
-  setEventBadge("idle");
   computeAmount();
-  rebuildRequest();
+  rebuildRequest("sale");
   bindEvents();
-  logEvent("Demo 已就绪。建议先用 Mock 模式验证流程，再切换 Real 模式。\n提示：onSuccess 不等于 approved，请结合 Query/事件流确认终态。");
+  setEventBadge("idle");
+  el.modeBadge.textContent = "收银模式: REAL";
+  updateTxnStatus("IDLE", {});
+  logEvent("商户收银 Demo 已就绪。请先点击“开始订阅”，再发起收款/撤销/退款/查单。交易状态将通过 terminalEventNotifyUrl 通知实时更新。");
 }
 
 bootstrap();

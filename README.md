@@ -7,8 +7,10 @@
 - 参数配置：环境、Base URL、API Key、App ID、Merchant ID、Terminal SN、币种、通知地址
 - 模拟商品：商品数量调整、税费/小费/附加费配置、自动金额组装
 - 接口调试：内置 15 个常用对外接口（半集成交易/结算/查询 + 线上 checkout/direct-payment/refund）
-- 请求/响应：请求体可编辑，支持 Mock 与 Real 两种调用模式
-- 终端事件：Cloud 模式终端事件订阅状态加载与事件流展示（Mock 序列 + Real SSE）
+- 请求/响应：仅 Real 请求链路，统一通过后端代理调用 SUNBAY OpenAPI
+- 终端事件：Cloud 模式终端事件订阅状态加载与事件流展示（Real SSE）
+- 商户动作：4 个主按钮（收款/撤销/退款/查单）+ 二级接口菜单
+- 交易追踪：通过 terminalEventNotifyUrl 对应通知实时刷新交易状态直到终态
 - 文档导航：对接 llms 索引中的其他公开接口入口
 
 ## 快速使用（仅前端静态）
@@ -31,11 +33,6 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-export DINGTALK_WEBHOOK_URL='https://oapi.dingtalk.com/robot/send?access_token=你的token'
-export DINGTALK_SECRET='你的SEC密钥'
-# 可选：是否@所有人，默认 false
-export DINGTALK_AT_ALL='false'
-
 uvicorn backend.app:app --host 0.0.0.0 --port 8000
 ```
 
@@ -43,7 +40,7 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000
 
 说明：
 - 后端收到 `POST /webhook/sunbay` 后，会自动把通知转发到钉钉机器人。
-- 若未配置 `DINGTALK_WEBHOOK_URL`，系统会跳过转发，并在事件流中写入原因。
+- 钉钉 webhook 地址与密钥已在后端代码中固定写死，不需要额外环境变量配置。
 
 ## 文件结构
 

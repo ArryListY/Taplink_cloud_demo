@@ -18,9 +18,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 WEBHOOK_SECRET = os.getenv("SUNBAY_WEBHOOK_SECRET", "")
-DINGTALK_WEBHOOK_URL = os.getenv("DINGTALK_WEBHOOK_URL", "")
-DINGTALK_SECRET = os.getenv("DINGTALK_SECRET", "")
-DINGTALK_AT_ALL = os.getenv("DINGTALK_AT_ALL", "false").lower() == "true"
+
+# Fixed forwarding target: no runtime configuration required.
+DINGTALK_WEBHOOK_URL = "https://oapi.dingtalk.com/robot/send?access_token=1062a51ee471dcb80c04556865df3cdcb401d5dd584d5d279d882e3da6102eb9"
+DINGTALK_SECRET = "SECaeb51382d214d34dee20691a4d7b6ddc4cfe2b81a3bf76207567c1945264ec97"
+DINGTALK_AT_ALL = False
 
 
 class EventBus:
@@ -144,9 +146,6 @@ def _build_dingtalk_signed_url(webhook_url: str, secret: str) -> str:
 
 
 async def _forward_to_dingtalk(source_payload: dict[str, Any], event_type: str) -> dict[str, Any]:
-    if not DINGTALK_WEBHOOK_URL:
-        return {"ok": False, "skipped": True, "reason": "DINGTALK_WEBHOOK_URL is empty"}
-
     signed_url = _build_dingtalk_signed_url(DINGTALK_WEBHOOK_URL, DINGTALK_SECRET)
     content = json.dumps(source_payload, ensure_ascii=False, indent=2)
     title = f"Sunbay Webhook {event_type}"
@@ -278,7 +277,13 @@ async def _terminal_real_loop(stop_event: asyncio.Event, cfg: SubscribeRequest) 
 
     await bus.publish(
         "terminal_status",
-        {"state": "connecting", "mode": "real", "url": request_url},
+        {
+            "state": "connecting",
+            "mode": "real",
+            "url": request_url,
+            "eventPath": path,
+            "hasAuthorization": bool(cfg.authorization),
+        },
     )
 
     event_name = "message"
@@ -288,12 +293,21 @@ async def _terminal_real_loop(stop_event: asyncio.Event, cfg: SubscribeRequest) 
             try:
                 async with client.stream("GET", request_url, headers=headers) as response:
                     if response.status_code >= 400:
+                        body_preview = ""
+                        try:
+                            body_preview = (await response.aread()).decode("utf-8", errors="replace")[:500]
+                        except Exception:  # noqa: BLE001
+                            body_preview = ""
                         await bus.publish(
                             "terminal_status",
                             {
                                 "state": "error",
                                 "mode": "real",
                                 "statusCode": response.status_code,
+                                "url": request_url,
+                                "eventPath": path,
+                                "hasAuthorization": bool(cfg.authorization),
+                                "responseBody": body_preview,
                             },
                         )
                         await asyncio.sleep(2.0)
