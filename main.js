@@ -694,6 +694,7 @@ function applyNotifyFinalState(state, snap, webhookEventType) {
   appendModalTimeline(`notifyUrl 最终状态 -> ${normalizedState} (reqId=${snap.transactionRequestId || "-"}, eventType=${webhookEventType})`);
   logEvent(`[notify最终状态] reqId=${snap.transactionRequestId || "-"} eventType=${webhookEventType} status=${normalizedState}`);
   activeTxn.finalFromNotify = true;
+  stopRecentEventPolling();
   appendModalTimeline("已满足 TRANSACTION_ENDED + transactionStatus，交易确认结束");
 }
 
@@ -1111,15 +1112,19 @@ function disconnectEventStream() {
     eventSource.close();
     eventSource = null;
   }
+  stopRecentEventPolling();
+  setEventBadge("idle");
+}
+
+function stopRecentEventPolling() {
   if (recentEventTimer) {
     clearInterval(recentEventTimer);
     recentEventTimer = null;
   }
-  setEventBadge("idle");
 }
 
 async function replayRecentEventsForActiveTxn() {
-  if (!activeTxn) return;
+  if (!activeTxn || activeTxn.finalFromNotify) return;
   try {
     const response = await fetch(`${getBackendUrl()}/api/events/recent`);
     if (!response.ok) return;
