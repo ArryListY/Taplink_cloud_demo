@@ -283,6 +283,8 @@ let selectedApiId = "sale";
 let eventSource = null;
 let recentEventTimer = null;
 let activeTxn = null;
+let activeModal = null;
+let modalOpener = null;
 
 const el = {
   backendUrl: document.getElementById("backendUrl"),
@@ -335,25 +337,21 @@ const el = {
   stepPresented: document.getElementById("stepPresented"),
   stepProcessing: document.getElementById("stepProcessing"),
   stepResult: document.getElementById("stepResult"),
-  openStatusDrawerBtn: document.getElementById("openStatusDrawerBtn"),
-  openConfigDrawerBtn: document.getElementById("openConfigDrawerBtn"),
-  openOpsDrawerBtn: document.getElementById("openOpsDrawerBtn"),
-  openObserveDrawerBtn: document.getElementById("openObserveDrawerBtn"),
-  sideDrawer: document.getElementById("sideDrawer"),
-  drawerBackdrop: document.getElementById("drawerBackdrop"),
-  drawerCloseBtn: document.getElementById("drawerCloseBtn"),
-  drawerTitle: document.getElementById("drawerTitle"),
-  drawerStatusSection: document.getElementById("drawerStatusSection"),
-  drawerConfigSection: document.getElementById("drawerConfigSection"),
-  drawerOpsSection: document.getElementById("drawerOpsSection"),
-  drawerObserveSection: document.getElementById("drawerObserveSection"),
+  openStatusModalBtn: document.getElementById("openStatusModalBtn"),
+  openConfigModalBtn: document.getElementById("openConfigModalBtn"),
+  openOpsModalBtn: document.getElementById("openOpsModalBtn"),
+  openObserveModalBtn: document.getElementById("openObserveModalBtn"),
+  statusPanelModal: document.getElementById("statusPanelModal"),
+  configModal: document.getElementById("configModal"),
+  opsModal: document.getElementById("opsModal"),
+  observeModal: document.getElementById("observeModal"),
 };
 
-const DRAWER_SECTIONS = {
-  status: { title: "交易状态", node: () => el.drawerStatusSection },
-  config: { title: "收银配置", node: () => el.drawerConfigSection },
-  ops: { title: "更多操作", node: () => el.drawerOpsSection },
-  observe: { title: "响应与事件", node: () => el.drawerObserveSection },
+const PANEL_MODALS = {
+  status: el.statusPanelModal,
+  config: el.configModal,
+  ops: el.opsModal,
+  observe: el.observeModal,
 };
 
 function uid(prefix) {
@@ -609,7 +607,7 @@ function isFinalTxnStatus(state) {
 }
 
 function showStatusModal() {
-  el.statusModal.classList.remove("hidden");
+  openModal(el.statusModal);
 }
 
 function appendModalTimeline(text) {
@@ -961,32 +959,39 @@ function buildGetQuery(payload) {
   return query;
 }
 
-function closeDrawer() {
-  if (!el.sideDrawer) return;
-  const active = document.activeElement;
-  if (active instanceof HTMLElement && el.sideDrawer.contains(active)) {
-    active.blur();
+function openModal(modal, opener = document.activeElement) {
+  if (!modal) return;
+  if (activeModal && activeModal !== modal) closeModal(activeModal, false);
+  activeModal = modal;
+  modalOpener = opener instanceof HTMLElement ? opener : null;
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  requestAnimationFrame(() => {
+    if (activeModal === modal) modal.classList.add("is-open");
+  });
+  const dismissControl = modal.querySelector(".icon-button, .modal-actions-row [data-modal-close]");
+  if (dismissControl instanceof HTMLElement) {
+    window.setTimeout(() => dismissControl.focus(), 210);
   }
-  el.sideDrawer.classList.add("hidden");
-  el.sideDrawer.setAttribute("aria-hidden", "true");
 }
 
-function openDrawer(sectionKey) {
-  if (!el.sideDrawer) return;
-  const entry = DRAWER_SECTIONS[sectionKey];
-  if (!entry) return;
-
-  for (const key of Object.keys(DRAWER_SECTIONS)) {
-    const node = DRAWER_SECTIONS[key].node();
-    if (!node) continue;
-    node.classList.add("hidden");
+function closeModal(modal = activeModal, restoreFocus = true) {
+  if (!modal || modal.classList.contains("hidden")) return;
+  modal.classList.remove("is-open");
+  modal.setAttribute("aria-hidden", "true");
+  if (activeModal === modal) activeModal = null;
+  window.setTimeout(() => {
+    if (!modal.classList.contains("is-open")) modal.classList.add("hidden");
+  }, 190);
+  if (restoreFocus && modalOpener && document.contains(modalOpener)) {
+    const opener = modalOpener;
+    modalOpener = null;
+    window.setTimeout(() => opener.focus(), 200);
   }
+}
 
-  const activeNode = entry.node();
-  if (activeNode) activeNode.classList.remove("hidden");
-  if (el.drawerTitle) el.drawerTitle.textContent = entry.title;
-  el.sideDrawer.classList.remove("hidden");
-  el.sideDrawer.setAttribute("aria-hidden", "false");
+function openPanelModal(sectionKey, opener) {
+  openModal(PANEL_MODALS[sectionKey], opener);
 }
 
 function collectPlainObjects(root, maxNodes = 40) {
@@ -1423,12 +1428,16 @@ function bindEvents() {
   el.queryTxnBtn.addEventListener("click", runSupplementQuery);
   el.modalQueryTxnBtn.addEventListener("click", runSupplementQuery);
 
-  if (el.openStatusDrawerBtn) el.openStatusDrawerBtn.addEventListener("click", () => openDrawer("status"));
-  if (el.openConfigDrawerBtn) el.openConfigDrawerBtn.addEventListener("click", () => openDrawer("config"));
-  if (el.openOpsDrawerBtn) el.openOpsDrawerBtn.addEventListener("click", () => openDrawer("ops"));
-  if (el.openObserveDrawerBtn) el.openObserveDrawerBtn.addEventListener("click", () => openDrawer("observe"));
-  if (el.drawerCloseBtn) el.drawerCloseBtn.addEventListener("click", closeDrawer);
-  if (el.drawerBackdrop) el.drawerBackdrop.addEventListener("click", closeDrawer);
+  el.openStatusModalBtn.addEventListener("click", (event) => openPanelModal("status", event.currentTarget));
+  el.openConfigModalBtn.addEventListener("click", (event) => openPanelModal("config", event.currentTarget));
+  el.openOpsModalBtn.addEventListener("click", (event) => openPanelModal("ops", event.currentTarget));
+  el.openObserveModalBtn.addEventListener("click", (event) => openPanelModal("observe", event.currentTarget));
+  [...Object.values(PANEL_MODALS), el.statusModal].forEach((modal) => {
+    modal.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-modal-close]")) closeModal(modal);
+    });
+  });
 
   el.subBtn.addEventListener("click", connectEventStream);
   el.unsubBtn.addEventListener("click", () => {
@@ -1439,19 +1448,8 @@ function bindEvents() {
     el.eventLog.innerHTML = "";
   });
 
-  el.closeStatusModal.addEventListener("click", () => {
-    el.statusModal.classList.add("hidden");
-  });
-  el.statusModal.addEventListener("click", (event) => {
-    if (event.target === el.statusModal) {
-      el.statusModal.classList.add("hidden");
-    }
-  });
-
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeDrawer();
-    }
+    if (event.key === "Escape") closeModal();
   });
 
   el.secondaryApi.addEventListener("change", () => {
@@ -1481,7 +1479,6 @@ function bootstrap() {
   updateTxnStatus("IDLE", {});
   el.queryTxnBtn.disabled = false;
   connectEventStream();
-  closeDrawer();
   logEvent("线上收银台已就绪。系统仅接收 webhook 推送更新状态，不主动订阅终端事件接口。");
 }
 
