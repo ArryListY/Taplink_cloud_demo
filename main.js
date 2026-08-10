@@ -281,6 +281,7 @@ const FIXED_TERMINAL_EVENT_NOTIFY_URL = "http://47.77.239.198/terminal-events/su
 
 let selectedApiId = "sale";
 let eventSource = null;
+let recentEventTimer = null;
 let activeTxn = null;
 
 const el = {
@@ -425,8 +426,18 @@ function getBaseUrl() {
   return el.customBaseUrl.value || "";
 }
 
+function getDefaultBackendUrl() {
+  if (typeof window !== "undefined" && window.location && /^https?:$/.test(window.location.protocol)) {
+    const host = window.location.hostname;
+    if (host && host !== "localhost" && host !== "127.0.0.1") {
+      return `${window.location.protocol}//${host}:8000`;
+    }
+  }
+  return "http://127.0.0.1:8000";
+}
+
 function getBackendUrl() {
-  return (el.backendUrl.value || "http://127.0.0.1:8000").trim().replace(/\/$/, "");
+  return (el.backendUrl.value || getDefaultBackendUrl()).trim().replace(/\/$/, "");
 }
 
 function getNotifyUrl() {
@@ -821,6 +832,12 @@ function handleEventData(raw) {
   const parsed = parsePayloadJson(raw);
   if (!parsed || !parsed.type) return;
 
+  if (activeTxn && parsed.ts) {
+    const eventKey = `${parsed.type}:${parsed.ts}:${JSON.stringify(parsed.payload || {})}`;
+    if (activeTxn.seenEventKeys.has(eventKey)) return;
+    activeTxn.seenEventKeys.add(eventKey);
+  }
+
   if (parsed.type === "terminal_notify_received") {
     const body = (parsed.payload && parsed.payload.payload) || {};
     const term = extractTerminalNotifySnapshot(body);
@@ -1094,6 +1111,10 @@ function disconnectEventStream() {
     eventSource.close();
     eventSource = null;
   }
+  if (recentEventTimer) {
+    clearInterval(recentEventTimer);
+    recentEventTimer = null;
+  }
   setEventBadge("idle");
 }
 
@@ -1107,8 +1128,9 @@ async function replayRecentEventsForActiveTxn() {
     let replayed = 0;
     for (const item of items) {
       if (item && (item.type === "terminal_notify_received" || item.type === "webhook_received")) {
+        const before = activeTxn.seenEventKeys.size;
         handleEventData(JSON.stringify(item));
-        replayed += 1;
+        if (activeTxn.seenEventKeys.size > before) replayed += 1;
       }
     }
     if (replayed) {
@@ -1117,6 +1139,13 @@ async function replayRecentEventsForActiveTxn() {
   } catch (err) {
     logEvent(`回放服务端事件失败: ${err.message || "unknown"}`);
   }
+}
+
+function startRecentEventPolling() {
+  if (recentEventTimer) clearInterval(recentEventTimer);
+  recentEventTimer = setInterval(() => {
+    void replayRecentEventsForActiveTxn();
+  }, 1500);
 }
 
 async function runSupplementQuery() {
@@ -1258,12 +1287,14 @@ async function runRequest(apiId = selectedApiId) {
     finalFromNotify: false,
     pendingNotifyState: "",
     pendingNotifyEventType: "",
+    seenEventKeys: new Set(),
   };
   updateTxnStatus("PROCESSING", activeTxn);
   resetModalForTxn(activeTxn);
 
   connectEventStream();
   void replayRecentEventsForActiveTxn();
+  startRecentEventPolling();
 
   el.runBtn.disabled = true;
   el.runAuthBtn.disabled = true;
@@ -1425,6 +1456,11 @@ function bindEvents() {
 
 function bootstrap() {
   loadPersistedConfig();
+  const defaultBackendUrl = getDefaultBackendUrl();
+  if (el.backendUrl.value === "http://127.0.0.1:8000" && defaultBackendUrl !== "http://127.0.0.1:8000") {
+    el.backendUrl.value = defaultBackendUrl;
+    persistConfig();
+  }
   renderProducts();
   renderSecondaryMenu();
   renderLinks();
