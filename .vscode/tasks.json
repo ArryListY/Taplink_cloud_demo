@@ -1,0 +1,10 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "push-taplink-cloud-demo",
+			"type": "shell",
+			"command": "git init && git add . && git commit -m \"feat: add deployable cloud demo with webhook and SSE backend\" && git branch -M main && (git remote remove origin 2>/dev/null || true) && git remote add origin https://github.com/ArryListY/Taplink_cloud_demo.git && git checkout -B feat/cloud-webhook-integration && git push -u origin feat/cloud-webhook-integration"
+		}
+	]
+}

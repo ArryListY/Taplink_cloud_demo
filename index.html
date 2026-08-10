@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TapLink Cloud Demo Checkout</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <main class="layout">
+    <header class="hero">
+      <h1>TapLink Cloud Checkout 控制台</h1>
+      <p>独立 Demo：参数配置、模拟商品、SUNBAY API 调试、Cloud 终端事件订阅。</p>
+      <div class="status-row">
+        <span id="modeBadge" class="badge">Mode: MOCK</span>
+        <span id="eventBadge" class="badge idle">事件状态: 未订阅</span>
+      </div>
+    </header>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>1) 参数配置</h2>
+        <div class="field-grid">
+          <label>Demo Backend URL
+            <input id="backendUrl" value="http://127.0.0.1:8000" />
+          </label>
+          <label>Webhook 接收地址（部署后回填到 SUNBAY）
+            <input id="webhookEndpoint" readonly />
+          </label>
+          <label>调用模式
+            <select id="runMode">
+              <option value="mock">Mock</option>
+              <option value="real">Real</option>
+            </select>
+          </label>
+          <label>环境
+            <select id="envType">
+              <option value="sandbox">Sandbox</option>
+              <option value="production">Production</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label>Custom Base URL
+            <input id="customBaseUrl" value="https://open-sandbox.sunbay.us" />
+          </label>
+          <label>API Key (Bearer)
+            <input id="apiKey" placeholder="sk_test_xxx" />
+          </label>
+          <label>App ID
+            <input id="appId" value="smgq9m496ty14ouw" />
+          </label>
+          <label>Merchant ID
+            <input id="merchantId" value="M1260231004" />
+          </label>
+          <label>Terminal SN
+            <input id="terminalSn" value="T1234567890" />
+          </label>
+          <label>Currency
+            <input id="currency" value="USD" maxlength="3" />
+          </label>
+          <label>Notify URL
+            <input id="notifyUrl" value="https://merchant.example.com/webhook" />
+          </label>
+          <label>Webhook Secret（可选）
+            <input id="webhookSecret" placeholder="签名密钥，仅在后端配置启用校验" />
+          </label>
+          <label>Merchant Return URL
+            <input id="returnUrl" value="https://merchant.example.com/result" />
+          </label>
+          <label>Tax (cents)
+            <input id="taxAmount" type="number" value="0" min="0" />
+          </label>
+          <label>Tip (cents)
+            <input id="tipAmount" type="number" value="0" min="0" />
+          </label>
+          <label>Surcharge (cents)
+            <input id="surchargeAmount" type="number" value="0" min="0" />
+          </label>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>2) 模拟商户商品</h2>
+        <div id="productList" class="product-list"></div>
+        <div class="totals">
+          <div><span>Order Amount</span><strong id="orderAmountText">$0.00</strong></div>
+          <div><span>Total Amount</span><strong id="totalAmountText">$0.00</strong></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>3) 接口选择</h2>
+        <div id="apiList" class="api-list"></div>
+      </article>
+
+      <article class="card">
+        <h2>4) 请求载荷</h2>
+        <div class="toolbar">
+          <button id="rebuildBtn" class="btn ghost">重建请求</button>
+          <button id="runBtn" class="btn">执行接口</button>
+        </div>
+        <p class="hint" id="endpointHint"></p>
+        <textarea id="requestPayload" rows="16"></textarea>
+      </article>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>5) 响应结果</h2>
+        <textarea id="responsePayload" rows="16" readonly></textarea>
+      </article>
+
+      <article class="card">
+        <h2>6) Cloud 终端事件订阅</h2>
+        <p class="hint">订阅状态由后端统一管理，终端事件和 webhook 通知会合并推送到本页。</p>
+        <label>Terminal Events URL (SSE)
+          <input id="eventUrl" value="/v1/semi-integration/terminal-events/subscribe" />
+        </label>
+        <div class="toolbar">
+          <button id="subBtn" class="btn">开始订阅</button>
+          <button id="unsubBtn" class="btn ghost">停止订阅</button>
+          <button id="clearEventsBtn" class="btn ghost">清空事件流</button>
+        </div>
+        <div id="eventLog" class="event-log"></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>7) Sunbay 对外接口导航（基于 llms 文档索引）</h2>
+      <p class="hint">说明：半集成交易、结算、查询、线上 checkout/direct-payment/refund 已在本页面可直接调试；其余入口可点击跳转查看。</p>
+      <div id="linkGroups" class="link-groups"></div>
+    </section>
+  </main>
+  <script src="./main.js"></script>
+</body>
+</html>
