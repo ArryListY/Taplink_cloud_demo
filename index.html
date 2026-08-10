@@ -103,6 +103,7 @@
         <div class="toolbar">
           <button id="rebuildBtn" class="btn ghost">按当前配置重建交易参数</button>
           <button id="runBtn" class="btn">发起当前交易</button>
+          <button id="queryTxnBtn" class="btn ghost" type="button">补充查询交易结果</button>
         </div>
         <p class="hint" id="endpointHint"></p>
         <textarea id="responsePayload" rows="16" readonly></textarea>
@@ -143,7 +144,10 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="statusModalTitle">交易处理中</h3>
-        <button id="closeStatusModal" class="modal-close" type="button">关闭</button>
+        <div class="modal-actions">
+          <button id="modalQueryTxnBtn" class="modal-close" type="button">补充查询</button>
+          <button id="closeStatusModal" class="modal-close" type="button">关闭</button>
+        </div>
       </div>
       <div class="modal-meta">
         <div><span>订单号</span><strong id="modalRef">-</strong></div>

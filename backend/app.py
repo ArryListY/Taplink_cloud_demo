@@ -451,6 +451,30 @@ def _extract_signature(request: Request) -> str:
     return request.headers.get("X-Signature", "") or request.headers.get("X-Sunbay-Signature", "")
 
 
+def _extract_payload_event_type(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+
+    direct = payload.get("eventType")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+
+    nested = payload.get("payload")
+    if isinstance(nested, dict):
+        inner = nested.get("eventType")
+        if isinstance(inner, str) and inner.strip():
+            return inner.strip()
+
+    return ""
+
+
+def _is_test_webhook_payload(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    # Some providers send webhook endpoint verification probes like {"test": true}.
+    return bool(payload.get("test") is True)
+
+
 async def _handle_incoming_webhook(request: Request, bus_event_type: str, default_dingtalk_event: str) -> JSONResponse:
     raw = await request.body()
     signature = _extract_signature(request)
@@ -470,20 +494,26 @@ async def _handle_incoming_webhook(request: Request, bus_event_type: str, defaul
             "x-request-id": request.headers.get("x-request-id", ""),
             "x-event-type": event_type,
             "x-signature": "present" if signature else "",
+            "x-sunbay-signature": "present" if request.headers.get("X-Sunbay-Signature", "") else "",
         },
         "payload": payload,
     }
     await bus.publish(bus_event_type, event_message)
 
-    dingtalk_event = event_type or default_dingtalk_event
-    if bus_event_type == "terminal_notify_received":
-        terminal_event_type = ""
-        if isinstance(payload, dict):
-            inner = payload.get("payload")
-            if isinstance(inner, dict):
-                terminal_event_type = str(inner.get("eventType", ""))
-        if terminal_event_type:
-            dingtalk_event = f"terminal.{terminal_event_type}"
+    payload_event_type = _extract_payload_event_type(payload)
+    dingtalk_event = payload_event_type or event_type or default_dingtalk_event
+    if bus_event_type == "terminal_notify_received" and payload_event_type:
+        dingtalk_event = f"terminal.{payload_event_type}"
+
+    if _is_test_webhook_payload(payload):
+        await bus.publish(
+            "dingtalk_forward_skipped",
+            {
+                "source": bus_event_type,
+                "reason": "webhook test payload",
+            },
+        )
+        return JSONResponse({"code": "0", "message": "received test payload"})
 
     try:
         forward_result = await _forward_to_dingtalk(event_message, dingtalk_event)

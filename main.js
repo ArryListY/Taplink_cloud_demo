@@ -56,12 +56,11 @@ const API_ITEMS = [
     label: "查单",
     group: "primary",
     method: "GET",
-    path: "/v1/semi-integration/query",
+    path: "/v1/transaction/query",
     build: (ctx) => ({
       appId: ctx.appId,
       merchantId: ctx.merchantId,
-      referenceOrderId: ctx.orderId,
-      terminalSn: ctx.terminalSn,
+      transactionRequestId: (activeTxn && activeTxn.transactionRequestId && activeTxn.transactionRequestId !== "-") ? activeTxn.transactionRequestId : ctx.requestId,
     }),
   },
   {
@@ -305,6 +304,7 @@ const el = {
   responsePayload: document.getElementById("responsePayload"),
   rebuildBtn: document.getElementById("rebuildBtn"),
   runBtn: document.getElementById("runBtn"),
+  queryTxnBtn: document.getElementById("queryTxnBtn"),
   modeBadge: document.getElementById("modeBadge"),
   eventBadge: document.getElementById("eventBadge"),
   eventUrl: document.getElementById("eventUrl"),
@@ -319,6 +319,7 @@ const el = {
   txnState: document.getElementById("txnState"),
   statusModal: document.getElementById("statusModal"),
   closeStatusModal: document.getElementById("closeStatusModal"),
+  modalQueryTxnBtn: document.getElementById("modalQueryTxnBtn"),
   modalRef: document.getElementById("modalRef"),
   modalReq: document.getElementById("modalReq"),
   modalState: document.getElementById("modalState"),
@@ -332,6 +333,13 @@ const el = {
 
 function uid(prefix) {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 9000 + 1000)}`;
+}
+
+function requestIdUuid() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
 }
 
 function loadPersistedConfig() {
@@ -598,6 +606,15 @@ function updateTxnStatus(state, payload = {}) {
     return;
   }
 
+  if (status === "TERMINAL_ENDED") {
+    el.txnState.textContent = "终端已结束(待交易结果回调)";
+    el.txnStatusPanel.className = "txn-status processing";
+    el.modalState.textContent = "终端已结束(待交易结果回调)";
+    el.statusModalTitle.textContent = "等待最终结果";
+    setLifecyclePhase("RESULT", false);
+    return;
+  }
+
   el.txnState.textContent = status ? `进行中(${status})` : "处理中";
   el.txnStatusPanel.className = "txn-status processing";
   el.modalState.textContent = status ? `进行中(${status})` : "处理中";
@@ -632,6 +649,82 @@ function deriveStateFromTerminalNotify(body, envelopePayload) {
   return "";
 }
 
+function deriveProgressStateFromTerminalEvent(eventType, eventStage) {
+  const et = String(eventType || "").toUpperCase();
+  const stage = String(eventStage || "").toUpperCase();
+
+  if (et === "TRANSACTION_ENDED" || stage === "END") return "TERMINAL_ENDED";
+  if (et === "PAYMENT_PRESENTED" || et === "PIN_ENTERING") return "PRESENTED";
+  if (["PAYMENT_PROCESSING", "SIGNATURE_CAPTURED", "PRINTING", "PRINT_COMPLETED"].includes(et)) return "PROCESSING";
+  if (et === "ORDER_RECEIVED") return "ORDER_RECEIVED";
+  return "";
+}
+
+function matchActiveTxnByIds(requestId, referenceOrderId) {
+  if (!activeTxn) return true;
+
+  const activeReqId = activeTxn.transactionRequestId && activeTxn.transactionRequestId !== "-" ? activeTxn.transactionRequestId : "";
+  const activeRefId = activeTxn.referenceOrderId && activeTxn.referenceOrderId !== "-" ? activeTxn.referenceOrderId : "";
+
+  if (activeReqId) {
+    if (!requestId) return false;
+    return requestId === activeReqId;
+  }
+  if (activeRefId) {
+    if (!referenceOrderId) return false;
+    return referenceOrderId === activeRefId;
+  }
+  return false;
+}
+
+function extractWebhookTxnSnapshot(body) {
+  const nodes = collectPlainObjects(body);
+  let transactionId = "";
+  let transactionRequestId = "";
+  let referenceOrderId = "";
+  let transactionStatus = "";
+  let transactionResultCode = "";
+  let eventType = "";
+
+  for (const node of nodes) {
+    if (!transactionId && node.transactionId) transactionId = String(node.transactionId);
+    if (!transactionRequestId && node.transactionRequestId) transactionRequestId = String(node.transactionRequestId);
+    if (!referenceOrderId && node.referenceOrderId) referenceOrderId = String(node.referenceOrderId);
+    if (!transactionStatus && node.transactionStatus) transactionStatus = String(node.transactionStatus).toUpperCase();
+    if (!transactionResultCode && node.transactionResultCode) transactionResultCode = String(node.transactionResultCode);
+    if (!eventType && node.eventType) eventType = String(node.eventType).toUpperCase();
+
+    if (transactionId && transactionRequestId && referenceOrderId && (transactionStatus || transactionResultCode) && eventType) {
+      break;
+    }
+  }
+
+  if (!transactionStatus) {
+    if (transactionResultCode === "000") transactionStatus = "S";
+    else if (transactionResultCode) transactionStatus = "F";
+  }
+
+  return {
+    transactionId,
+    transactionRequestId,
+    referenceOrderId,
+    transactionStatus,
+    transactionResultCode,
+    eventType,
+  };
+}
+
+function extractWebhookEventType(parsed) {
+  const headerEventType = String(parsed?.payload?.headers?.["x-event-type"] || "").toUpperCase();
+  if (headerEventType) return headerEventType;
+
+  const body = parsed?.payload?.payload;
+  const snap = extractWebhookTxnSnapshot(body);
+  if (snap.eventType) return snap.eventType;
+
+  return "TRANSACTION_RESULT";
+}
+
 function handleEventData(raw) {
   const parsed = parsePayloadJson(raw);
   if (!parsed || !parsed.type) return;
@@ -640,17 +733,20 @@ function handleEventData(raw) {
     const body = (parsed.payload && parsed.payload.payload) || {};
     const envelopePayload = body.payload && typeof body.payload === "object" ? body.payload : {};
     const eventType = envelopePayload.eventType || body.eventType || "";
+    const eventStage = envelopePayload.eventStage || body.eventStage || "";
+    const transactionId = envelopePayload.transactionId || body.transactionId || "";
     const requestId = envelopePayload.transactionRequestId || body.transactionRequestId || "";
     const referenceOrderId = envelopePayload.referenceOrderId || body.referenceOrderId || "";
-    const matchesTxn =
-      !activeTxn ||
-      requestId === activeTxn.transactionRequestId ||
-      referenceOrderId === activeTxn.referenceOrderId;
+    const matchesTxn = matchActiveTxnByIds(requestId, referenceOrderId);
 
     if (matchesTxn) {
+      if (activeTxn && transactionId) {
+        activeTxn.transactionId = transactionId;
+      }
       if (eventType) {
         applyLifecycleByEventType(eventType);
-        appendModalTimeline(`terminalEventNotifyUrl event -> ${eventType}`);
+        appendModalTimeline(`terminalEventNotifyUrl event -> ${eventType} (reqId=${requestId || "-"})`);
+        logEvent(`[terminal事件] reqId=${requestId || "-"} eventType=${String(eventType || "-").toUpperCase()} stage=${String(eventStage || "-").toUpperCase()}`);
       }
 
       const stateFromTerminal = deriveStateFromTerminalNotify(body, envelopePayload);
@@ -660,9 +756,18 @@ function handleEventData(raw) {
           transactionRequestId: requestId || (activeTxn && activeTxn.transactionRequestId) || "-",
         };
         updateTxnStatus(stateFromTerminal, statusPayload);
-        appendModalTimeline(`terminalEventNotifyUrl 状态 -> ${stateFromTerminal}`);
+        appendModalTimeline(`terminalEventNotifyUrl 状态 -> ${stateFromTerminal} (reqId=${requestId || "-"})`);
         if (activeTxn && isFinalTxnStatus(stateFromTerminal)) {
           activeTxn.finalFromTerminalNotify = true;
+        }
+      } else {
+        const progressState = deriveProgressStateFromTerminalEvent(eventType, eventStage);
+        if (progressState) {
+          updateTxnStatus(progressState, {
+            referenceOrderId: referenceOrderId || (activeTxn && activeTxn.referenceOrderId) || "-",
+            transactionRequestId: requestId || (activeTxn && activeTxn.transactionRequestId) || "-",
+          });
+          appendModalTimeline(`terminalEventNotifyUrl 阶段 -> ${progressState} (reqId=${requestId || "-"})`);
         }
       }
     }
@@ -670,16 +775,39 @@ function handleEventData(raw) {
 
   if (parsed.type === "webhook_received") {
     const body = (parsed.payload && parsed.payload.payload) || {};
-    const matchesTxn = !activeTxn || body.transactionRequestId === activeTxn.transactionRequestId || body.referenceOrderId === activeTxn.referenceOrderId;
+    if (body && body.test === true) {
+      appendModalTimeline("收到 webhook 测试通知，已忽略");
+      logEvent("[webhook测试] payload.test=true，未更新交易状态");
+      return;
+    }
+    const snap = extractWebhookTxnSnapshot(body);
+    const matchesTxn = matchActiveTxnByIds(snap.transactionRequestId, snap.referenceOrderId);
     if (matchesTxn) {
-      if (activeTxn && activeTxn.finalFromTerminalNotify) {
-        appendModalTimeline("交易结果 webhook 已收到（状态以 terminalEventNotifyUrl 为准）");
-        return;
+      if (activeTxn && snap.transactionId) {
+        activeTxn.transactionId = snap.transactionId;
       }
-      const state = body.transactionStatus || body.transactionResultCode || "PROCESSING";
-      updateTxnStatus(state, body);
-      appendModalTimeline(`交易结果 webhook -> ${state}`);
-      logEvent(`[交易状态] ${state} requestId=${body.transactionRequestId || "-"}`);
+      if (activeTxn && snap.referenceOrderId) {
+        activeTxn.referenceOrderId = snap.referenceOrderId;
+      }
+      if (activeTxn && snap.transactionRequestId) {
+        activeTxn.transactionRequestId = snap.transactionRequestId;
+      }
+
+      const state = snap.transactionStatus || "PROCESSING";
+      if (!(activeTxn && activeTxn.finalFromTerminalNotify)) {
+        updateTxnStatus(state, {
+          referenceOrderId: snap.referenceOrderId || (activeTxn && activeTxn.referenceOrderId) || "-",
+          transactionRequestId: snap.transactionRequestId || (activeTxn && activeTxn.transactionRequestId) || "-",
+        });
+      }
+
+      const webhookEventType = extractWebhookEventType(parsed);
+      appendModalTimeline(`webhook 状态 -> ${state} (reqId=${snap.transactionRequestId || "-"}, eventType=${webhookEventType})`);
+      logEvent(`[webhook状态] reqId=${snap.transactionRequestId || "-"} eventType=${webhookEventType} status=${state}`);
+
+      if (activeTxn && activeTxn.finalFromTerminalNotify) {
+        appendModalTimeline("已收到 webhook 状态（当前展示仍以 terminalEventNotifyUrl 为主）");
+      }
       if (isFinalTxnStatus(state)) {
         appendModalTimeline("交易已到终态，可关闭弹窗");
       }
@@ -706,6 +834,93 @@ function buildGetQuery(payload) {
     query[key] = value;
   }
   return query;
+}
+
+function collectPlainObjects(root, maxNodes = 40) {
+  const out = [];
+  const queue = [root];
+  while (queue.length && out.length < maxNodes) {
+    const cur = queue.shift();
+    if (!cur || typeof cur !== "object" || Array.isArray(cur)) continue;
+    out.push(cur);
+    for (const value of Object.values(cur)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        queue.push(value);
+      }
+    }
+  }
+  return out;
+}
+
+function extractStatusFromQueryResponse(root) {
+  const nodes = collectPlainObjects(root);
+  for (const node of nodes) {
+    const direct = node.transactionStatus || node.status || "";
+    if (direct) return String(direct).toUpperCase();
+
+    const resultCode = node.transactionResultCode || node.resultCode || "";
+    if (String(resultCode) === "000") return "S";
+    if (resultCode) return "F";
+  }
+  return "";
+}
+
+function extractTxnIdsFromResponse(root) {
+  const nodes = collectPlainObjects(root);
+  let transactionId = "";
+  let referenceOrderId = "";
+  let transactionRequestId = "";
+  for (const node of nodes) {
+    if (!transactionId && node.transactionId) {
+      transactionId = String(node.transactionId);
+    }
+    if (!referenceOrderId && node.referenceOrderId) {
+      referenceOrderId = String(node.referenceOrderId);
+    }
+    if (!transactionRequestId && node.transactionRequestId) {
+      transactionRequestId = String(node.transactionRequestId);
+    }
+    if (transactionId && referenceOrderId && transactionRequestId) break;
+  }
+  return { transactionId, referenceOrderId, transactionRequestId };
+}
+
+function extractCodeMessageFromResponse(root) {
+  const nodes = collectPlainObjects(root);
+  let code = "";
+  let msg = "";
+  for (const node of nodes) {
+    if (!code && node.code) code = String(node.code);
+    if (!msg && node.msg) msg = String(node.msg);
+    if (code && msg) break;
+  }
+  return { code, msg };
+}
+
+async function proxyQueryTransaction(headers, queryPayload) {
+  const response = await fetch(`${getBackendUrl()}/api/proxy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      mode: "real",
+      base_url: getBaseUrl(),
+      method: "GET",
+      path: "/v1/transaction/query",
+      headers,
+      payload: {},
+      query: queryPayload,
+    }),
+  });
+
+  const raw = await response.text();
+  let data = raw;
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    data = raw;
+  }
+
+  return { response, data };
 }
 
 function connectEventStream() {
@@ -747,9 +962,120 @@ function disconnectEventStream() {
   setEventBadge("idle");
 }
 
+async function runSupplementQuery() {
+  if (!activeTxn || (!activeTxn.transactionId && !activeTxn.transactionRequestId)) {
+    appendModalTimeline("暂无可查询交易，请先发起交易");
+    return;
+  }
+
+  const transactionId = activeTxn.transactionId && activeTxn.transactionId !== "-" ? activeTxn.transactionId : "";
+  const transactionRequestId = activeTxn.transactionRequestId && activeTxn.transactionRequestId !== "-" ? activeTxn.transactionRequestId : "";
+
+  const headers = {
+    "X-Timestamp": `${Date.now()}`,
+    "X-Client-Request-Id": requestIdUuid(),
+  };
+  const auth = buildAuthorization();
+  if (auth) headers.Authorization = auth;
+
+  el.queryTxnBtn.disabled = true;
+  el.queryTxnBtn.textContent = "查询中...";
+  el.modalQueryTxnBtn.disabled = true;
+  el.modalQueryTxnBtn.textContent = "查询中...";
+  appendModalTimeline("发起补充查询: /v1/transaction/query");
+
+  try {
+    const attempts = [
+      {
+        label: "transactionId",
+        query: {
+          appId: el.appId.value,
+          merchantId: el.merchantId.value,
+          transactionId,
+        },
+      },
+      {
+        label: "transactionRequestId",
+        query: {
+          appId: el.appId.value,
+          merchantId: el.merchantId.value,
+          transactionRequestId,
+        },
+      },
+    ].filter((item) => item.query.transactionId || item.query.transactionRequestId);
+
+    let matchedStatus = "";
+    let lastResult = null;
+
+    for (const attempt of attempts) {
+      const { response, data } = await proxyQueryTransaction(headers, attempt.query);
+      const wrapped = {
+        mode: "real",
+        endpoint: "GET /v1/transaction/query",
+        attempt: attempt.label,
+        httpStatus: response.status,
+        ok: response.ok,
+        data,
+      };
+      el.responsePayload.value = JSON.stringify(wrapped, null, 2);
+      appendModalTimeline(`补充查询(${attempt.label})响应 HTTP ${response.status}`);
+
+      lastResult = data;
+      const statusFromQuery = extractStatusFromQueryResponse(data);
+      const idsFromQuery = extractTxnIdsFromResponse(data);
+
+      if (activeTxn) {
+        if (idsFromQuery.transactionId) activeTxn.transactionId = idsFromQuery.transactionId;
+        if (idsFromQuery.referenceOrderId) activeTxn.referenceOrderId = idsFromQuery.referenceOrderId;
+        if (idsFromQuery.transactionRequestId) activeTxn.transactionRequestId = idsFromQuery.transactionRequestId;
+      }
+
+      if (statusFromQuery) {
+        matchedStatus = statusFromQuery;
+        break;
+      }
+    }
+
+    if (matchedStatus && (!activeTxn || !activeTxn.finalFromTerminalNotify)) {
+      updateTxnStatus(matchedStatus, {
+        referenceOrderId: (activeTxn && activeTxn.referenceOrderId) || "-",
+        transactionRequestId: (activeTxn && activeTxn.transactionRequestId) || "-",
+      });
+      appendModalTimeline(`查询状态 -> ${matchedStatus}`);
+    } else if (!matchedStatus) {
+      const idsFromQuery = extractTxnIdsFromResponse(lastResult || {});
+      const queryCodeInfo = extractCodeMessageFromResponse(lastResult || {});
+      if (activeTxn) {
+        if (idsFromQuery.transactionId) activeTxn.transactionId = idsFromQuery.transactionId;
+        if (idsFromQuery.referenceOrderId) activeTxn.referenceOrderId = idsFromQuery.referenceOrderId;
+        if (idsFromQuery.transactionRequestId) activeTxn.transactionRequestId = idsFromQuery.transactionRequestId;
+      }
+      if (queryCodeInfo.code && (!activeTxn || !activeTxn.finalFromTerminalNotify)) {
+        const tip = queryCodeInfo.msg ? `${queryCodeInfo.code}:${queryCodeInfo.msg}` : queryCodeInfo.code;
+        el.txnState.textContent = `待回调(查询:${tip})`;
+        el.modalState.textContent = `待回调(查询:${tip})`;
+        el.txnStatusPanel.className = "txn-status processing";
+      }
+      appendModalTimeline("查询未返回可识别交易状态，已保留当前状态");
+    }
+  } catch (err) {
+    appendModalTimeline(`补充查询失败: ${err.message || "unknown"}`);
+  } finally {
+    el.queryTxnBtn.disabled = false;
+    el.queryTxnBtn.textContent = "补充查询交易结果";
+    el.modalQueryTxnBtn.disabled = false;
+    el.modalQueryTxnBtn.textContent = "补充查询";
+  }
+}
+
 async function runRequest(apiId = selectedApiId) {
   selectedApiId = apiId;
   const api = selectedApi();
+
+  if (api.id === "query") {
+    await runSupplementQuery();
+    return;
+  }
 
   let payload;
   try {
@@ -770,6 +1096,7 @@ async function runRequest(apiId = selectedApiId) {
   el.requestPayload.value = JSON.stringify(payload, null, 2);
 
   activeTxn = {
+    transactionId: "-",
     referenceOrderId: payload.referenceOrderId || "-",
     transactionRequestId: payload.transactionRequestId || "-",
     finalFromTerminalNotify: false,
@@ -785,7 +1112,7 @@ async function runRequest(apiId = selectedApiId) {
   const headers = {
     "Content-Type": "application/json",
     "X-Timestamp": `${Date.now()}`,
-    "X-Client-Request-Id": uid("CID"),
+    "X-Client-Request-Id": requestIdUuid(),
   };
   const auth = buildAuthorization();
   if (auth) headers.Authorization = auth;
@@ -820,6 +1147,13 @@ async function runRequest(apiId = selectedApiId) {
       ok: response.ok,
       data,
     }, null, 2);
+
+    const idsFromResp = extractTxnIdsFromResponse(data);
+    if (activeTxn) {
+      if (idsFromResp.transactionId) activeTxn.transactionId = idsFromResp.transactionId;
+      if (idsFromResp.referenceOrderId) activeTxn.referenceOrderId = idsFromResp.referenceOrderId;
+      if (idsFromResp.transactionRequestId) activeTxn.transactionRequestId = idsFromResp.transactionRequestId;
+    }
 
     appendModalTimeline(`网关响应 HTTP ${response.status}`);
     logEvent(`HTTP ${response.status}: ${api.method} ${api.path}`);
@@ -881,6 +1215,8 @@ function bindEvents() {
 
   el.rebuildBtn.addEventListener("click", () => rebuildRequest(selectedApiId));
   el.runBtn.addEventListener("click", () => runRequest(selectedApiId));
+  el.queryTxnBtn.addEventListener("click", runSupplementQuery);
+  el.modalQueryTxnBtn.addEventListener("click", runSupplementQuery);
 
   el.subBtn.addEventListener("click", connectEventStream);
   el.unsubBtn.addEventListener("click", () => {
@@ -917,6 +1253,7 @@ function bootstrap() {
   setLifecyclePhase("");
   el.modeBadge.textContent = "线上模式: REAL";
   updateTxnStatus("IDLE", {});
+  el.queryTxnBtn.disabled = false;
   connectEventStream();
   logEvent("线上收银台已就绪。系统仅接收 webhook 推送更新状态，不主动订阅终端事件接口。");
 }
