@@ -277,6 +277,16 @@ textarea {
   color: var(--accent);
 }
 
+.advanced summary {
+  cursor: pointer;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.advanced section + section {
+  margin-top: 12px;
+}
+
 .hint {
   font-size: 12px;
   color: var(--muted);
@@ -340,6 +350,133 @@ textarea {
   font-size: 13px;
 }
 
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 20, 30, 0.48);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+  padding: 16px;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-card {
+  width: min(720px, 100%);
+  max-height: 86vh;
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  box-shadow: 0 24px 52px rgba(4, 20, 31, 0.25);
+  padding: 14px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modal-head h3 {
+  margin: 0;
+}
+
+.modal-close {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 9px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.modal-meta {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.modal-meta > div {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fcff;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.modal-meta span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.modal-timeline {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfeff;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.lifecycle {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.lifecycle-step {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f6fafc;
+  padding: 8px;
+}
+
+.lifecycle-step .step-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.lifecycle-step .step-sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+.lifecycle-step.active {
+  border-color: #9cc8d8;
+  background: #eaf7fc;
+}
+
+.lifecycle-step.done {
+  border-color: #8bcfc1;
+  background: #e8fbf5;
+}
+
+.lifecycle-step.fail {
+  border-color: #e2a6b6;
+  background: #fff1f5;
+}
+
+.timeline-item {
+  border: 1px solid #e7edf2;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fff;
+  font-size: 13px;
+}
+
 @media (max-width: 960px) {
   .two-col,
   .field-grid,
@@ -348,6 +485,14 @@ textarea {
   }
 
   .primary-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .lifecycle {
     grid-template-columns: 1fr;
   }
 }

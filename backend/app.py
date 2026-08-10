@@ -446,13 +446,17 @@ def _is_signature_valid(raw_body: bytes, received_signature: str) -> bool:
     return hmac.compare_digest(digest, received_signature)
 
 
-@app.post("/webhook/sunbay")
-async def webhook_sunbay(request: Request) -> JSONResponse:
+def _extract_signature(request: Request) -> str:
+    # Docs mainly use X-Signature; keep backward compatibility with X-Sunbay-Signature.
+    return request.headers.get("X-Signature", "") or request.headers.get("X-Sunbay-Signature", "")
+
+
+async def _handle_incoming_webhook(request: Request, bus_event_type: str, default_dingtalk_event: str) -> JSONResponse:
     raw = await request.body()
-    signature = request.headers.get("X-Sunbay-Signature", "")
+    signature = _extract_signature(request)
 
     if not _is_signature_valid(raw, signature):
-        await bus.publish("webhook_error", {"message": "signature verification failed"})
+        await bus.publish("webhook_error", {"message": "signature verification failed", "type": bus_event_type})
         raise HTTPException(status_code=401, detail="invalid webhook signature")
 
     try:
@@ -460,25 +464,44 @@ async def webhook_sunbay(request: Request) -> JSONResponse:
     except Exception:  # noqa: BLE001
         payload = {"raw": raw.decode("utf-8", errors="replace")}
 
-    webhook_event = {
+    event_type = request.headers.get("x-event-type", "")
+    event_message = {
         "headers": {
             "x-request-id": request.headers.get("x-request-id", ""),
-            "x-event-type": request.headers.get("x-event-type", ""),
-            "x-sunbay-signature": "present" if signature else "",
+            "x-event-type": event_type,
+            "x-signature": "present" if signature else "",
         },
         "payload": payload,
     }
+    await bus.publish(bus_event_type, event_message)
 
-    await bus.publish("webhook_received", webhook_event)
+    dingtalk_event = event_type or default_dingtalk_event
+    if bus_event_type == "terminal_notify_received":
+        terminal_event_type = ""
+        if isinstance(payload, dict):
+            inner = payload.get("payload")
+            if isinstance(inner, dict):
+                terminal_event_type = str(inner.get("eventType", ""))
+        if terminal_event_type:
+            dingtalk_event = f"terminal.{terminal_event_type}"
 
-    event_type = webhook_event["headers"].get("x-event-type") or "unknown"
     try:
-        forward_result = await _forward_to_dingtalk(webhook_event, event_type)
-        await bus.publish("dingtalk_forward", forward_result)
+        forward_result = await _forward_to_dingtalk(event_message, dingtalk_event)
+        await bus.publish("dingtalk_forward", {"source": bus_event_type, **forward_result})
     except Exception as exc:  # noqa: BLE001
-        await bus.publish("dingtalk_forward_error", {"error": str(exc)})
+        await bus.publish("dingtalk_forward_error", {"source": bus_event_type, "error": str(exc)})
 
     return JSONResponse({"code": "0", "message": "received"})
+
+
+@app.post("/webhook/sunbay")
+async def webhook_sunbay(request: Request) -> JSONResponse:
+    return await _handle_incoming_webhook(request, "webhook_received", "transaction_result")
+
+
+@app.post("/webhook/terminal-events")
+async def webhook_terminal_events(request: Request) -> JSONResponse:
+    return await _handle_incoming_webhook(request, "terminal_notify_received", "terminal_event")
 
 
 @app.get("/api/healthz")

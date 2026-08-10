@@ -10,17 +10,17 @@
   <div class="bg-grid"></div>
   <main class="layout">
     <header class="hero">
-      <h1>TapLink 商户收银 Demo</h1>
-      <p>面向商户场景的收银演示页：商品下单、云端收单、终端事件回传与通知联动。</p>
+      <h1>TapLink 线上收银台</h1>
+      <p>请选择商品并发起收款，系统将自动跟踪交易状态并实时回显。</p>
       <div class="status-row">
-        <span id="modeBadge" class="badge">收银模式: REAL</span>
+        <span id="modeBadge" class="badge">线上模式: REAL</span>
         <span id="eventBadge" class="badge idle">事件状态: 未订阅</span>
       </div>
     </header>
 
     <section class="grid two-col">
       <article class="card">
-        <h2>1) 商户与连接配置</h2>
+        <h2>1) 收银配置</h2>
         <div class="field-grid">
           <label>Demo Backend URL
             <input id="backendUrl" value="http://127.0.0.1:8000" />
@@ -64,7 +64,7 @@
       </article>
 
       <article class="card">
-        <h2>2) 收银商品</h2>
+        <h2>2) 商品与订单</h2>
         <div id="productList" class="product-list"></div>
         <div class="totals">
           <div><span>Order Amount</span><strong id="orderAmountText">$0.00</strong></div>
@@ -75,7 +75,7 @@
 
     <section class="grid two-col">
       <article class="card">
-        <h2>3) 收银动作</h2>
+        <h2>3) 快捷操作</h2>
         <div class="primary-actions" id="primaryActions">
           <button class="action-btn" data-action="sale" type="button">收款</button>
           <button class="action-btn" data-action="void" type="button">撤销</button>
@@ -91,7 +91,7 @@
       </article>
 
       <article class="card">
-        <h2>4) 交易状态追踪</h2>
+        <h2>4) 当前交易状态</h2>
         <div id="txnStatusPanel" class="txn-status idle">
           <div><strong>当前交易:</strong> <span id="txnRef">-</span></div>
           <div><strong>请求流水:</strong> <span id="txnReq">-</span></div>
@@ -99,7 +99,7 @@
         </div>
         <p class="hint">系统会通过 terminalEventNotifyUrl 对应通知持续刷新，直到交易终态。</p>
 
-        <h2 style="margin-top:14px;">5) 交易执行结果</h2>
+        <h2 style="margin-top:14px;">5) 网关响应</h2>
         <div class="toolbar">
           <button id="rebuildBtn" class="btn ghost">按当前配置重建交易参数</button>
           <button id="runBtn" class="btn">发起当前交易</button>
@@ -109,32 +109,68 @@
       </article>
 
       <article class="card">
-        <h2>6) Cloud 终端事件订阅</h2>
-        <p class="hint">订阅状态由后端统一管理，终端事件和 webhook 通知会合并推送到本页。</p>
-        <label>Terminal Events URL (SSE)
-          <input id="eventUrl" value="/v1/semi-integration/terminal-events/subscribe" />
-        </label>
-        <div class="toolbar">
-          <button id="subBtn" class="btn">开始订阅</button>
-          <button id="unsubBtn" class="btn ghost">停止订阅</button>
-          <button id="clearEventsBtn" class="btn ghost">清空事件流</button>
-        </div>
+        <h2>6) 终端与通知事件</h2>
+        <p class="hint">系统会自动订阅终端事件并接收 terminalEventNotifyUrl 通知，你可以在下方查看完整事件轨迹。</p>
         <div id="eventLog" class="event-log"></div>
       </article>
     </section>
 
-    <section class="card">
-      <h2>7) 开发者请求参数（可选）</h2>
-      <p class="hint">如需精细调试可编辑 JSON；普通演示可直接使用“发起交易”。</p>
-      <textarea id="requestPayload" rows="14"></textarea>
-    </section>
-
-    <section class="card">
-      <h2>8) Sunbay 对外接口导航</h2>
-      <p class="hint">说明：已内置常用收银 API；其余能力可通过文档入口查看。</p>
-      <div id="linkGroups" class="link-groups"></div>
-    </section>
+    <details class="card advanced">
+      <summary>高级设置与调试面板</summary>
+      <section>
+        <h2>7) Cloud 终端事件订阅配置</h2>
+        <label>terminalEventNotifyUrl（自动回填到请求中）
+          <input id="eventUrl" value="http://127.0.0.1:8000/webhook/terminal-events" />
+        </label>
+        <div class="toolbar">
+          <button id="subBtn" class="btn">连接实时状态流</button>
+          <button id="unsubBtn" class="btn ghost">断开实时状态流</button>
+          <button id="clearEventsBtn" class="btn ghost">清空事件流</button>
+        </div>
+      </section>
+      <section>
+        <h2>8) 请求参数（高级）</h2>
+        <textarea id="requestPayload" rows="14"></textarea>
+      </section>
+      <section>
+        <h2>9) 接口导航</h2>
+        <div id="linkGroups" class="link-groups"></div>
+      </section>
+    </details>
   </main>
+
+  <div id="statusModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="statusModalTitle">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="statusModalTitle">交易处理中</h3>
+        <button id="closeStatusModal" class="modal-close" type="button">关闭</button>
+      </div>
+      <div class="modal-meta">
+        <div><span>订单号</span><strong id="modalRef">-</strong></div>
+        <div><span>请求流水</span><strong id="modalReq">-</strong></div>
+        <div><span>当前状态</span><strong id="modalState">等待中</strong></div>
+      </div>
+      <div class="lifecycle">
+        <div class="lifecycle-step" id="stepPlaced">
+          <div class="step-title">已下单</div>
+          <div class="step-sub">ORDER_RECEIVED</div>
+        </div>
+        <div class="lifecycle-step" id="stepPresented">
+          <div class="step-title">等待刷卡</div>
+          <div class="step-sub">PAYMENT_PRESENTED / PIN_ENTERING</div>
+        </div>
+        <div class="lifecycle-step" id="stepProcessing">
+          <div class="step-title">处理中</div>
+          <div class="step-sub">PAYMENT_PROCESSING / SIGNATURE_CAPTURED / PRINTING / PRINT_COMPLETED</div>
+        </div>
+        <div class="lifecycle-step" id="stepResult">
+          <div class="step-title">完成/失败</div>
+          <div class="step-sub">TRANSACTION_ENDED + 交易结果</div>
+        </div>
+      </div>
+      <div id="modalTimeline" class="modal-timeline"></div>
+    </div>
+  </div>
   <script src="./main.js"></script>
 </body>
 </html>
