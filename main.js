@@ -80,9 +80,10 @@ function getConfig() {
 }
 
 function getDefaultBackendUrl() {
-  if (typeof window !== 'undefined' && window.location && /^https?:$/.test(window.location.protocol)) {
+  if (typeof window !== 'undefined' && window.location) {
     const host = window.location.hostname;
-    if (host && host !== 'localhost' && host !== '127.0.0.1') return `${window.location.protocol}//${host}:8000`;
+    if (host === 'localhost' || host === '127.0.0.1') return 'http://127.0.0.1:8000';
+    return `${window.location.protocol}//${host}:8000`;
   }
   return 'http://127.0.0.1:8000';
 }
