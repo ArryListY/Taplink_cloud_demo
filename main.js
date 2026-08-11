@@ -1151,7 +1151,15 @@ function checkFinalState() {
   const status = activeTxn.notifyStatus;
   if (!status) return;
 
-  // Final if we have a terminal status from webhook
+  // Dual-callback confirmation: both terminalEnded AND notifyStatus must be satisfied
+  // terminalEventNotifyUrl must have received TRANSACTION_ENDED
+  // AND notifyUrl (webhook) must have received a final transactionStatus
+  if (!activeTxn.terminalEnded) {
+    logEvent(`[checkFinal] notifyStatus=${status} but terminalEnded=false, waiting for TRANSACTION_ENDED...`);
+    return;
+  }
+
+  // Both conditions met - confirm final state
   if (status === TxnStatus.SUCCESS || status === TxnStatus.FAILED) {
     activeTxn.status = status;
     activeTxn.updatedAt = Date.now();
