@@ -593,8 +593,8 @@ async function runQuery(requestId) {
       // Save full query response data for detail display
       const queryData = r.data?.data?.data || r.data?.data || r.data;
       targetTxn.queryData = queryData;
-      // If no webhookData yet, use queryData as the source of detail fields
-      if (!targetTxn.webhookData) targetTxn.webhookData = queryData;
+      // Query returns the latest state, always use it as the display source
+      targetTxn.webhookData = queryData;
       saveTransactions(); if (currentView === AppView.PROGRESS) renderProgress(); if (currentView === AppView.DETAIL) renderDetail(); updateDevConsole();
     }
   } catch (e) { logEvent(`Query failed: ${e.message}`); }
