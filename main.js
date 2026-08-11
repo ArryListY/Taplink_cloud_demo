@@ -429,7 +429,7 @@ function createTxnRecord(type, channel = 'terminal') {
 }
 
 function startTxnProgress(txn) {
-  navigateTo(AppView.PROGRESS); logEvent(`${txn.type} initiated`); connectEventStream(); startRecentEventPolling(); updateDevConsole();
+  navigateTo(AppView.PROGRESS); logEvent(`${txn.type} initiated`); connectEventStream(); updateDevConsole();
 }
 
 async function handleApiResult(result, txn) {
@@ -438,12 +438,15 @@ async function handleApiResult(result, txn) {
   logEvent(`HTTP ${result.httpStatus}: code=${code || '0'}, msg=${msg}`);
   if (code && code !== '0') {
     txn.status = TxnStatus.FAILED; txn.errorMessage = `[${code}] ${msg}`; txn.updatedAt = Date.now();
-    saveTransactions(); renderProgress(); stopRecentEventPolling(); updateDevConsole(); return false;
+    saveTransactions(); renderProgress(); updateDevConsole(); return false;
   }
   const ids = extractIdsFromResponse(result.data);
   if (ids.transactionId) txn.transactionId = ids.transactionId;
   if (ids.transactionRequestId) txn.requestId = ids.transactionRequestId;
-  updateDevConsole(); return true;
+  updateDevConsole();
+  // Replay recent events once to catch anything that arrived during the API call
+  replayRecentEvents();
+  return true;
 }
 
 // --- Sale ---
@@ -524,7 +527,10 @@ async function executeOnlineCheckout() {
     const r = await callProxy('POST', API_PATHS.CHECKOUT_CREATE, payload);
     if (!(await handleApiResult(r, txn))) return;
     const nodes = collectPlainObjects(r.data);
-    for (const n of nodes) { if (n.checkoutUrl) { txn.checkoutUrl = n.checkoutUrl; break; } }
+    for (const n of nodes) {
+      if (n.checkoutUrl && !txn.checkoutUrl) txn.checkoutUrl = n.checkoutUrl;
+      if (n.sessionId && !txn.sessionId) txn.sessionId = n.sessionId;
+    }
     if (txn.checkoutUrl) { showCheckoutLink(txn.checkoutUrl); if (el.progressSubtitle) el.progressSubtitle.textContent = 'Checkout session created. Complete payment in new tab.'; }
   } catch (e) { logEvent(`Request failed: ${e.message}`); }
 }
@@ -535,7 +541,9 @@ async function executeAbort() {
   const cfg = getConfig(); const isOnline = activeTxn.channel === 'online';
   if (el.abortBtn) { el.abortBtn.disabled = true; el.abortBtn.textContent = 'Processing...'; }
   const path = isOnline ? API_PATHS.CHECKOUT_EXPIRE : API_PATHS.ABORT;
-  const payload = isOnline ? { appId: cfg.appId, merchantId: cfg.merchantId, transactionRequestId: activeTxn.requestId, referenceOrderId: activeTxn.orderId } : { ...basePayload(), originalTransactionId: activeTxn.transactionId || undefined, originalTransactionRequestId: activeTxn.requestId || undefined, description: 'User cancelled' };
+  const payload = isOnline
+    ? { appId: cfg.appId, merchantId: cfg.merchantId, sessionId: activeTxn.sessionId || undefined, transactionRequestId: activeTxn.requestId, referenceOrderId: activeTxn.orderId }
+    : { ...basePayload(), originalTransactionId: activeTxn.transactionId || undefined, originalTransactionRequestId: activeTxn.requestId || undefined, description: 'User cancelled' };
   try {
     const r = await callProxy('POST', path, payload);
     const code = extractCodeFromResponse(r.data);
@@ -550,7 +558,7 @@ async function executeExpireSession(txn) {
   if (!txn) return;
   const cfg = getConfig(); const btn = document.getElementById('detailExpireBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Closing...'; }
-  const payload = { appId: cfg.appId, merchantId: cfg.merchantId, transactionRequestId: txn.requestId, referenceOrderId: txn.orderId };
+  const payload = { appId: cfg.appId, merchantId: cfg.merchantId, sessionId: txn.sessionId || undefined, transactionRequestId: txn.requestId, referenceOrderId: txn.orderId };
   try {
     const r = await callProxy('POST', API_PATHS.CHECKOUT_EXPIRE, payload);
     const code = extractCodeFromResponse(r.data);
@@ -613,9 +621,10 @@ function connectEventStream() {
   try { eventSource = new EventSource(`${getConfig().backendUrl}/api/events/stream`); eventSource.onopen = () => setEventBadge('connected'); eventSource.onerror = () => setEventBadge('error'); eventSource.onmessage = (e) => handleEventData(e.data); setEventBadge('connected'); } catch { setEventBadge('error'); }
 }
 function disconnectEventStream() { if (eventSource) { eventSource.close(); eventSource = null; } setEventBadge('idle'); stopRecentEventPolling(); }
-function startRecentEventPolling() { stopRecentEventPolling(); recentEventTimer = setInterval(() => replayRecentEvents(), 3000); }
+function startRecentEventPolling() { /* removed: no longer polls */ }
 function stopRecentEventPolling() { if (recentEventTimer) { clearInterval(recentEventTimer); recentEventTimer = null; } }
-async function replayRecentEvents() { if (!activeTxn || activeTxn.status === TxnStatus.SUCCESS || activeTxn.status === TxnStatus.FAILED) { stopRecentEventPolling(); return; } try { const r = await fetch(`${getConfig().backendUrl}/api/events/recent`); const d = await r.json(); if (d.items) d.items.forEach(i => handleEventData(JSON.stringify(i))); } catch {} }
+// Called once after API response to catch any events that arrived during request
+async function replayRecentEvents() { if (!activeTxn || activeTxn.status === TxnStatus.SUCCESS || activeTxn.status === TxnStatus.FAILED) return; try { const r = await fetch(`${getConfig().backendUrl}/api/events/recent`); const d = await r.json(); if (d.items) d.items.forEach(i => handleEventData(JSON.stringify(i))); } catch {} }
 
 function handleEventData(raw) {
   let parsed; try { parsed = JSON.parse(raw); } catch { return; }
