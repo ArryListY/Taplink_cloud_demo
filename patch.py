@@ -19,8 +19,6 @@ styleCss = open('style.css', 'r', encoding='utf-8').read()
 pattern_lifecycle_css = r'\.lifecycle { display: grid; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\); ga\np: 9px; margin-top: 14px; }'
 replacement_lifecycle_css = '.lifecycle { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; margin-top: 24px; padding: 24px 0; }'
 styleCss = re.sub(pattern_lifecycle_css, replacement_lifecycle_css, styleCss)
-styleCss = styleCss.replace('.lifecycle { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }', replacement_lifecycle_css)
-
 
 pattern_step_css1 = r'\.lifecycle-step { border: 1px solid var\(--outline-variant\); border-radius: 12px;\n padding: 10px; background: var\(--surface-variant\); }'
 pattern_step_css2 = r'\.lifecycle-step { border: 1px solid var\(--outline-variant\); border-radius: 12px; padding: 10px; background: var\(--surface-variant\); }'
@@ -37,9 +35,11 @@ styleCss = styleCss.replace('.field-grid, .totals, .checkout-paybar, .modal-meta
 styleCss = styleCss.replace('.lifecycle.hidden { display: none; }', '') + '\n.loader-spinner { width: 40px; height: 40px; border: 4px solid var(--outline-variant); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }\n@keyframes spin { to { transform: rotate(360deg); } }'
 open('style.css', 'w', encoding='utf-8').write(styleCss)
 
+
 mainJs = open('main.js', 'r', encoding='utf-8').read()
 mainJs = mainJs.replace('stepPlaced: document.getElementById("stepPlaced"),', 'loadingLifecycle: document.getElementById("loadingLifecycle"),\n  currentEventStep: document.getElementById("currentEventStep"),\n  currentEventTitle: document.getElementById("currentEventTitle"),\n  currentEventSub: document.getElementById("currentEventSub"),')
 mainJs = re.sub(r'\s*stepPresented: document\.getElementById\("stepPresented"\),\n\s*stepProcessing: document\.getElementById\("stepProcessing"\),\n\s*stepResult: document\.getElementById\("stepResult"\),', '', mainJs)
+
 
 updateTxnStatusNew = """function updateTxnStatus(state, payload = {}) {
   const status = String(state || "").toUpperCase();
@@ -89,7 +89,6 @@ function applyNotifyFinalState"""
 
 mainJs = re.sub(r'function updateTxnStatus\(state, payload = \{\}\) \{[\s\S]*?function applyNotifyFinalState', updateTxnStatusNew, mainJs)
 
-
 applyLifecycleByEventTypeNew = """function applyLifecycleByEventType(eventType) {
   const et = String(eventType || "").toUpperCase();
   if (!et) return;
@@ -117,6 +116,7 @@ applyLifecycleByEventTypeNew = """function applyLifecycleByEventType(eventType) 
 function isFinalTxnStatus"""
 mainJs = re.sub(r'function applyLifecycleByEventType\(eventType\) \{[\s\S]*?function isFinalTxnStatus', applyLifecycleByEventTypeNew, mainJs)
 
+
 applyNotifyFinalStateNew = """function applyNotifyFinalState(state, snap, webhookEventType) {
   const normalizedState = String(state || "").toUpperCase();
 
@@ -135,12 +135,10 @@ applyNotifyFinalStateNew = """function applyNotifyFinalState(state, snap, webhoo
 function resetModalForTxn"""
 mainJs = re.sub(r'function applyNotifyFinalState[\s\S]*?function resetModalForTxn', applyNotifyFinalStateNew, mainJs)
 
-mainJs = re.sub(r'if \(activeTxn && progressState === "TERMINAL_ENDED"\) \{[\s\S]*?\} else if \(eventType \|\| requestId', 'if (activeTxn && progressState === "TERMINAL_ENDED") {\n        activeTxn.terminalEnded = true;\n        appendModalTimeline("终端事件已结束，等待最终交易结果");\n      }\n    } else if (eventType || requestId', mainJs)
+mainJs = re.sub(r'if \(activeTxn && progressState === "TERMINAL_ENDED"\) \{[\s\S]*?\} else if \(eventType \|\| requestId', 'if (activeTxn && progressState === "TERMINAL_ENDED") {\\n        activeTxn.terminalEnded = true;\\n        appendModalTimeline("终端事件已结束，等待最终交易结果");\\n      }\\n    } else if (eventType || requestId', mainJs)
 mainJs = mainJs.replace('if (activeTxn && !activeTxn.terminalEnded) {', 'if (false) {')
 
 mainJs = mainJs.replace('setLifecyclePhase("PLACED");', '')
-# Remove setLifecyclePhase definition and setStepState definition to avoid unused code
-mainJs = re.sub(r'function setStepState\(node, state\) \{[\s\S]*?function setLifecyclePhase', 'function setLifecyclePhase', mainJs)
-mainJs = re.sub(r'function setLifecyclePhase\(phase, failed = false\) \{[\s\S]*?function applyLifecycleByEventType', 'function applyLifecycleByEventType', mainJs)
 
 open('main.js', 'w', encoding='utf-8').write(mainJs)
+
