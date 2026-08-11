@@ -47,8 +47,8 @@ const API_PATHS = {
   TIP_ADJUST: '/v1/semi-integration/transaction/tip-adjust',
   ABORT: '/v1/semi-integration/transaction/abort',
   QUERY: '/v1/transaction/query',
-  BATCH_QUERY: '/v1/semi-integration/settlement/batch-query',
-  BATCH_CLOSE: '/v1/semi-integration/settlement/batch-close',
+  BATCH_QUERY: '/v1/settlement/batch-query',
+  BATCH_CLOSE: '/v1/settlement/batch-close',
   CHECKOUT_CREATE: '/v1/checkout/create-session',
   CHECKOUT_EXPIRE: '/v1/checkout/expire-session',
   MERCHANT_QUERY: '/v1/merchant/query',
@@ -403,7 +403,8 @@ function renderHistory() {
 // ============================================================
 async function callProxy(method, path, payload, query = {}) {
   const cfg = getConfig();
-  const headers = { 'Content-Type': 'application/json', 'X-Timestamp': `${Date.now()}`, 'X-Client-Request-Id': uid('CID') };
+  const headers = { 'X-Timestamp': `${Date.now()}`, 'X-Client-Request-Id': uid('CID') };
+  if (method !== 'GET') headers['Content-Type'] = 'application/json';
   const auth = buildAuth(); if (auth) headers['Authorization'] = auth;
   const body = { mode: 'real', base_url: cfg.baseUrl, method, path, headers, payload: method === 'GET' ? {} : payload, query: method === 'GET' ? payload : query };
   const resp = await fetch(`${cfg.backendUrl}/api/proxy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
