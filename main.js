@@ -220,34 +220,34 @@ function toggleSubSettings() {
   if (signatureSettings) signatureSettings.classList.toggle('hidden', !document.getElementById('signatureEnabled')?.checked);
 }
 
-// Build tipConfig object for API request (matches SDK TipConfig structure)
+// Build tipConfig object for API request (matches CloudPaymentService.buildTipConfigJson)
 function buildTipConfig() {
   const s = getSettings();
   if (!s.tipEnabled) return undefined;
   const config = {
+    useHostConfig: false,
     onScreenTip: s.tipOnScreenTip,
-    mode: s.tipMode,
+    tipMode: s.tipMode,
     tipWithTax: s.tipWithTax,
   };
   if (s.tipSuggestionsEnabled) {
     config.suggestions = {
       feeMode: s.tipFeeMode,
-      options: [
-        { value: s.tipSuggestion1 },
-        { value: s.tipSuggestion2 },
-        { value: s.tipSuggestion3 },
-      ],
+      values: [s.tipSuggestion1, s.tipSuggestion2, s.tipSuggestion3],
     };
   }
   return config;
 }
 
-// Build signatureConfig object for API request
+// Build signatureConfig object for API request (matches CloudPaymentService.buildSignatureConfigJson)
 function buildSignatureConfig() {
   const s = getSettings();
   if (!s.signatureEnabled) return undefined;
-  const config = { mode: s.signatureMode };
-  if (s.signatureThresholdEnabled) {
+  const config = {
+    useHostConfig: false,
+    entryLocation: s.signatureMode, // ON_SCREEN | ON_RECEIPT | NONE
+  };
+  if (s.signatureThresholdEnabled && s.signatureThreshold > 0) {
     config.threshold = s.signatureThreshold;
   }
   return config;
