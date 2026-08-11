@@ -83,7 +83,7 @@ function getDefaultBackendUrl() {
   if (typeof window !== 'undefined' && window.location) {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') return 'http://127.0.0.1:8000';
-    return `${window.location.protocol}//${host}:8000`;
+    return '';
   }
   return 'http://127.0.0.1:8000';
 }
