@@ -153,6 +153,14 @@ function getOrderTotal() {
   return subtotal + (orderAmounts.taxAmount || 0) + (orderAmounts.tipAmount || 0) + (orderAmounts.surchargeAmount || 0) + (orderAmounts.cashbackAmount || 0);
 }
 
+// Get display amount for a transaction: prefer transAmount from response, fallback to totalCents
+function getDisplayAmount(txn) {
+  const data = txn.webhookData || txn.queryData;
+  if (data?.amount?.transAmount) return data.amount.transAmount;
+  if (data?.transAmount) return data.transAmount;
+  return txn.totalCents || 0;
+}
+
 // === Persistence ===
 function loadConfig() {
   try {
@@ -333,7 +341,7 @@ function renderDetail() {
   let iconClass = 'processing', iconChar = '⏳', title = 'Processing';
   if (txn.status === TxnStatus.SUCCESS) { iconClass = 'success'; iconChar = '✓'; title = 'Successful'; }
   else if (txn.status === TxnStatus.FAILED) { iconClass = 'error'; iconChar = '✕'; title = 'Failed'; }
-  el.detailResult.innerHTML = `<div class="result-icon ${iconClass}">${iconChar}</div><h2>${txn.type} - ${title}</h2>${txn.errorMessage ? `<p class="text-muted">${txn.errorMessage}</p>` : ''}<div class="result-amount">${formatMoney(txn.totalCents || 0)}</div>`;
+  el.detailResult.innerHTML = `<div class="result-icon ${iconClass}">${iconChar}</div><h2>${txn.type} - ${title}</h2>${txn.errorMessage ? `<p class="text-muted">${txn.errorMessage}</p>` : ''}<div class="result-amount">${formatMoney(getDisplayAmount(txn))}</div>`;
   const fields = [['Type', txn.type], ['Status', txn.status], ['Order ID', txn.orderId || '-'], ['Request ID', txn.requestId || '-'], ['Transaction ID', txn.transactionId || '-'], ['Channel', txn.channel || '-'], ['Created', formatDate(txn.createdAt)]];
 
   // Merge fields from webhook/query response
@@ -343,7 +351,13 @@ function renderDetail() {
     for (const [key, value] of Object.entries(responseData)) {
       if (displayedKeys.has(key)) continue; // Already shown above
       if (value === null || value === undefined || value === '') continue;
-      if (typeof value === 'object') {
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        // Expand object sub-fields (e.g. amount → orderAmount, tipAmount, etc.)
+        for (const [subKey, subValue] of Object.entries(value)) {
+          if (subValue === null || subValue === undefined || subValue === '') continue;
+          fields.push([`${key}.${subKey}`, String(subValue)]);
+        }
+      } else if (Array.isArray(value)) {
         fields.push([key, JSON.stringify(value)]);
       } else {
         fields.push([key, String(value)]);
@@ -410,7 +424,7 @@ function renderHistory() {
   if (filtered.length === 0) { el.historyList.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span><p>No transactions yet</p></div>`; return; }
   el.historyList.innerHTML = filtered.sort((a, b) => b.createdAt - a.createdAt).map(txn => {
     const sc = txn.status === TxnStatus.SUCCESS ? 'success' : txn.status === TxnStatus.FAILED ? 'error' : 'processing';
-    return `<div class="history-card" data-txn-id="${txn.id}"><div class="history-card-status ${sc}"></div><div class="history-card-body"><div class="history-card-title">${txn.type} <span class="status-badge ${sc}">${txn.status}</span></div><div class="history-card-sub">${txn.requestId || '-'}</div></div><div class="history-card-right"><div class="history-card-amount">${formatMoney(txn.totalCents || 0)}</div><div class="history-card-time">${formatDate(txn.createdAt)}</div></div></div>`;
+    return `<div class="history-card" data-txn-id="${txn.id}"><div class="history-card-status ${sc}"></div><div class="history-card-body"><div class="history-card-title">${txn.type} <span class="status-badge ${sc}">${txn.status}</span></div><div class="history-card-sub">${txn.requestId || '-'}</div></div><div class="history-card-right"><div class="history-card-amount">${formatMoney(getDisplayAmount(txn))}</div><div class="history-card-time">${formatDate(txn.createdAt)}</div></div></div>`;
   }).join('');
 }
 
@@ -454,7 +468,7 @@ function createTxnRecord(type, channel = 'terminal') {
 }
 
 function startTxnProgress(txn) {
-  navigateTo(AppView.PROGRESS); logEvent(`${txn.type} initiated`); connectEventStream(); updateDevConsole();
+  navigateTo(AppView.PROGRESS); logEvent(`${txn.type} initiated`); connectEventStream(); startRecentEventPolling(); updateDevConsole();
 }
 
 async function handleApiResult(result, txn) {
@@ -528,16 +542,25 @@ async function executeBatchClose() {
     // Step 2: Close each channel
     let successCount = 0;
     let failCount = 0;
+    const batchResults = [];
     for (const channelCode of channelCodes) {
       const closeRequestId = channelCodes.length > 1 ? `${txn.requestId}_${channelCode}` : txn.requestId;
       const closePayload = { ...basePayload(), transactionRequestId: closeRequestId, channelCode, description: 'Batch Close', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : 'AUTO', notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
       try {
         const r = await callProxy('POST', API_PATHS.BATCH_CLOSE, closePayload);
         const code = extractCodeFromResponse(r.data);
-        if (!code || code === '0') { successCount++; logEvent(`Batch close [${channelCode}]: OK`); }
+        if (!code || code === '0') {
+          successCount++; logEvent(`Batch close [${channelCode}]: OK`);
+          const respData = r.data?.data?.data || r.data?.data || r.data;
+          batchResults.push({ channelCode, ...respData });
+        }
         else { failCount++; logEvent(`Batch close [${channelCode}]: [${code}] ${extractMsgFromResponse(r.data)}`); }
       } catch (e) { failCount++; logEvent(`Batch close [${channelCode}] failed: ${e.message}`); }
     }
+
+    // Save batch results for detail display
+    txn.queryData = batchResults.length === 1 ? batchResults[0] : { channels: batchResults };
+    txn.webhookData = txn.queryData;
 
     // Final result
     if (failCount === 0) { txn.status = TxnStatus.SUCCESS; txn.errorMessage = null; }
@@ -722,13 +745,28 @@ function showMerchantResult(text) {
 // ============================================================
 function connectEventStream() {
   if (eventSource && eventSource.readyState !== EventSource.CLOSED) return;
-  try { eventSource = new EventSource(`${getConfig().backendUrl}/api/events/stream`); eventSource.onopen = () => setEventBadge('connected'); eventSource.onerror = () => setEventBadge('error'); eventSource.onmessage = (e) => handleEventData(e.data); setEventBadge('connected'); } catch { setEventBadge('error'); }
+  try {
+    eventSource = new EventSource(`${getConfig().backendUrl}/api/events/stream`);
+    eventSource.onopen = () => setEventBadge('connected');
+    eventSource.onerror = () => setEventBadge('error');
+    // Listen to all event types from backend
+    eventSource.onmessage = (e) => handleEventData(e.data);
+    eventSource.addEventListener('terminal_notify_received', (e) => handleEventData(e.data));
+    eventSource.addEventListener('webhook_received', (e) => handleEventData(e.data));
+    eventSource.addEventListener('api_response', (e) => handleEventData(e.data));
+    eventSource.addEventListener('terminal_event', (e) => handleEventData(e.data));
+    eventSource.addEventListener('terminal_status', (e) => handleEventData(e.data));
+    setEventBadge('connected');
+  } catch { setEventBadge('error'); }
 }
 function disconnectEventStream() { if (eventSource) { eventSource.close(); eventSource = null; } setEventBadge('idle'); stopRecentEventPolling(); }
-function startRecentEventPolling() { /* removed: no longer polls */ }
+function startRecentEventPolling() { stopRecentEventPolling(); recentEventTimer = setInterval(() => replayRecentEvents(), 10000); }
 function stopRecentEventPolling() { if (recentEventTimer) { clearInterval(recentEventTimer); recentEventTimer = null; } }
-// Called once after API response to catch any events that arrived during request
-async function replayRecentEvents() { if (!activeTxn || activeTxn.status === TxnStatus.SUCCESS || activeTxn.status === TxnStatus.FAILED) return; try { const r = await fetch(`${getConfig().backendUrl}/api/events/recent`); const d = await r.json(); if (d.items) d.items.forEach(i => handleEventData(JSON.stringify(i))); } catch {} }
+// Fallback polling: replay recent events every 10s in case SSE missed them
+async function replayRecentEvents() {
+  if (!activeTxn || activeTxn.status === TxnStatus.SUCCESS || activeTxn.status === TxnStatus.FAILED) { stopRecentEventPolling(); return; }
+  try { const r = await fetch(`${getConfig().backendUrl}/api/events/recent`); const d = await r.json(); if (d.items) d.items.forEach(i => handleEventData(JSON.stringify(i))); } catch {}
+}
 
 function handleEventData(raw) {
   let parsed; try { parsed = JSON.parse(raw); } catch { return; }
@@ -770,7 +808,8 @@ function checkFinalState() {
   if (!activeTxn) return;
   const status = activeTxn.notifyStatus;
   if (!status) return;
-  if (!activeTxn.terminalEnded) { logEvent(`[checkFinal] status=${status} but waiting for TRANSACTION_ENDED`); return; }
+  // If we have a final status from webhook, update immediately
+  // (terminalEnded is informational; webhook is the authoritative result)
   if (status === TxnStatus.SUCCESS || status === TxnStatus.FAILED) {
     activeTxn.status = status; activeTxn.updatedAt = Date.now(); saveTransactions(); stopRecentEventPolling(); renderProgress(); updateDevConsole();
   }
