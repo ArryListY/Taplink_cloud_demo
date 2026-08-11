@@ -1,7 +1,6 @@
 // ============================================================
 // SUNBAY Coffee Store - Cloud Demo
-// UI logic aligned with taplinkdemo/app-compose module
-// Views: Menu → Checkout → Progress → Detail → History
+// Aligned with taplinkdemo/app-compose + lib_service CloudPaymentService
 // ============================================================
 
 // === Constants ===
@@ -9,23 +8,62 @@ const FIXED_NOTIFY_WEBHOOK_URL = 'http://47.77.239.198/webhook/sunbay';
 const FIXED_TERMINAL_EVENT_NOTIFY_URL = 'http://47.77.239.198/terminal-events/sunbay';
 const STORAGE_KEY = 'taplink_cloud_demo_config_v2';
 const HISTORY_STORAGE_KEY = 'taplink_cloud_demo_history_v1';
+const SETTINGS_STORAGE_KEY = 'taplink_cloud_demo_settings_v1';
 
 const PRODUCTS = [
-  { id: 'p1', name: 'Americano', icon: '☕️', desc: 'Fresh pulled espresso with hot water', priceCents: 550 },
+  { id: 'p1', name: 'Americano', icon: '☕️', desc: 'Classic espresso + hot water', priceCents: 550 },
   { id: 'p2', name: 'Blueberry Muffin', icon: '🧁', desc: 'Freshly baked every morning', priceCents: 420 },
-  { id: 'p3', name: 'Croissant', icon: '🥐', desc: 'Classic buttery French pastry', priceCents: 390 },
-  { id: 'p4', name: 'Cold Brew', icon: '🧊', desc: 'Slow steeped for 24 hours', priceCents: 680 },
+  { id: 'p3', name: 'Croissant', icon: '🥐', desc: 'Buttery French pastry', priceCents: 390 },
+  { id: 'p4', name: 'Cold Brew', icon: '🧊', desc: 'Slow steeped 24 hours', priceCents: 680 },
+  { id: 'p5', name: 'Cappuccino', icon: '☕', desc: 'Espresso with steamed milk foam', priceCents: 620 },
+  { id: 'p6', name: 'Matcha Latte', icon: '🍵', desc: 'Organic ceremonial grade matcha', priceCents: 720 },
+  { id: 'p7', name: 'Avocado Toast', icon: '🥑', desc: 'Sourdough with fresh avocado', priceCents: 950 },
+  { id: 'p8', name: 'Bagel & Cream Cheese', icon: '🥯', desc: 'New York style bagel', priceCents: 480 },
 ];
 
-// === App State (MVI-like) ===
+// All supported transaction types (aligned with CloudPaymentService paths)
+const TxnType = {
+  SALE: 'Sale',
+  AUTH: 'Auth',
+  FORCED_AUTH: 'Forced Auth',
+  REFUND: 'Refund',
+  VOID: 'Void',
+  POST_AUTH: 'Post Auth',
+  INCREMENTAL_AUTH: 'Incremental Auth',
+  TIP_ADJUST: 'Tip Adjust',
+  BATCH_CLOSE: 'Batch Close',
+  QUERY: 'Query',
+  CHECKOUT_SESSION: 'Checkout Session',
+};
+
+const API_PATHS = {
+  SALE: '/v1/semi-integration/transaction/sale',
+  AUTH: '/v1/semi-integration/transaction/auth',
+  FORCED_AUTH: '/v1/semi-integration/transaction/forced-auth',
+  REFUND: '/v1/semi-integration/transaction/refund',
+  VOID: '/v1/semi-integration/transaction/void',
+  POST_AUTH: '/v1/semi-integration/transaction/post-auth',
+  INCREMENTAL_AUTH: '/v1/semi-integration/transaction/incremental-auth',
+  TIP_ADJUST: '/v1/semi-integration/transaction/tip-adjust',
+  ABORT: '/v1/semi-integration/transaction/abort',
+  QUERY: '/v1/transaction/query',
+  BATCH_QUERY: '/v1/settlement/batch-query',
+  BATCH_CLOSE: '/v1/settlement/batch-close',
+  CHECKOUT_CREATE: '/v1/checkout/create-session',
+  CHECKOUT_EXPIRE: '/v1/checkout/expire-session',
+};
+
+// === App State ===
 const AppView = { MENU: 'menu', CHECKOUT: 'checkout', PROGRESS: 'progress', DETAIL: 'detail', HISTORY: 'history' };
 const TxnStatus = { PENDING: 'PENDING', PROCESSING: 'PROCESSING', SUCCESS: 'SUCCESS', FAILED: 'FAILED' };
 
 let currentView = AppView.MENU;
 let cart = {}; // { productId: qty }
-let transactions = []; // All transaction records
-let activeTxn = null; // Current active transaction
-let currentDetailTxnId = null; // Transaction ID being viewed in detail
+let orderAmounts = { tipAmount: 0, taxAmount: 0, surchargeAmount: 0, cashbackAmount: 0 }; // Additional amounts in cents
+let selectedTxnType = TxnType.SALE; // Current selected transaction type
+let transactions = [];
+let activeTxn = null;
+let currentDetailTxnId = null;
 let historyFilter = 'all';
 let eventSource = null;
 let recentEventTimer = null;
@@ -36,7 +74,7 @@ function initElements() {
   const ids = [
     'menuView', 'checkoutView', 'progressView', 'detailView', 'historyView',
     'menuGrid', 'floatingCart', 'cartCountBadge', 'cartTotalFloat', 'goToCheckoutBtn',
-    'backToMenuBtn', 'checkoutCartList', 'checkoutSubtotal', 'checkoutTax', 'checkoutTotal', 'payBtn', 'payBtnAmount',
+    'backToMenuBtn', 'checkoutCartList', 'checkoutSubtotal', 'checkoutTax', 'checkoutTotal', 'payBtn', 'payBtnAmount', 'checkoutTaxLabel',
     'progressType', 'progressAmount', 'progressTitle', 'progressSubtitle', 'abortBtn',
     'detailResult', 'detailFields', 'detailActions',
     'historyBackBtn', 'historyFilters', 'historyList', 'historyEmpty', 'historyBtn',
@@ -45,11 +83,12 @@ function initElements() {
     'eventBadge', 'subBtn', 'unsubBtn', 'clearEventsBtn', 'eventLog',
     'openConfigModalBtn', 'configModal',
     'backendUrl', 'envType', 'customBaseUrl', 'apiKey', 'appId', 'merchantId', 'terminalSn', 'currency', 'notifyUrl', 'configEventUrl', 'returnUrl',
+    'txnTypeSelect', 'additionalAmounts', 'tipAmountInput', 'taxAmountInput', 'surchargeInput', 'cashbackInput',
   ];
   ids.forEach(id => { el[id] = document.getElementById(id); });
 }
 
-// === Utility Functions ===
+// === Utilities ===
 function uid(prefix) { return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 9000 + 1000)}`; }
 
 function formatMoney(cents) {
@@ -58,13 +97,8 @@ function formatMoney(cents) {
   catch { return `${(cents / 100).toFixed(2)} ${cur}`; }
 }
 
-function formatTime(ts) {
-  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-function formatDate(ts) {
-  return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
+function formatTime(ts) { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+function formatDate(ts) { return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
 
 function getConfig() {
   return {
@@ -83,7 +117,8 @@ function getDefaultBackendUrl() {
   if (typeof window !== 'undefined' && window.location) {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') return 'http://127.0.0.1:8000';
-    return '';
+    const port = window.location.port ? ':' + window.location.port : '';
+    return `${window.location.protocol}//${host}${port}`;
   }
   return 'http://127.0.0.1:8000';
 }
@@ -102,15 +137,18 @@ function buildAuth() {
   return key.startsWith('Bearer ') ? key : `Bearer ${key}`;
 }
 
-function getCartTotal() {
+function getCartSubtotal() {
   return Object.entries(cart).reduce((sum, [pid, qty]) => {
     const p = PRODUCTS.find(x => x.id === pid);
     return sum + (p ? p.priceCents * qty : 0);
   }, 0);
 }
 
-function getCartCount() {
-  return Object.values(cart).reduce((sum, qty) => sum + qty, 0);
+function getCartCount() { return Object.values(cart).reduce((s, q) => s + q, 0); }
+
+function getOrderTotal() {
+  const subtotal = getCartSubtotal();
+  return subtotal + (orderAmounts.taxAmount || 0) + (orderAmounts.tipAmount || 0) + (orderAmounts.surchargeAmount || 0) + (orderAmounts.cashbackAmount || 0);
 }
 
 // === Persistence ===
@@ -119,47 +157,27 @@ function loadConfig() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const cfg = JSON.parse(raw);
-    if (cfg.backendUrl && el.backendUrl) el.backendUrl.value = cfg.backendUrl;
-    if (cfg.envType && el.envType) el.envType.value = cfg.envType;
-    if (cfg.customBaseUrl && el.customBaseUrl) el.customBaseUrl.value = cfg.customBaseUrl;
-    if (cfg.apiKey && el.apiKey) el.apiKey.value = cfg.apiKey;
-    if (cfg.appId && el.appId) el.appId.value = cfg.appId;
-    if (cfg.merchantId && el.merchantId) el.merchantId.value = cfg.merchantId;
-    if (cfg.terminalSn && el.terminalSn) el.terminalSn.value = cfg.terminalSn;
-    if (cfg.currency && el.currency) el.currency.value = cfg.currency;
-    if (cfg.returnUrl && el.returnUrl) el.returnUrl.value = cfg.returnUrl;
+    ['backendUrl','envType','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(k => {
+      if (cfg[k] && el[k]) el[k].value = cfg[k];
+    });
   } catch { /* ignore */ }
 }
-
 function saveConfig() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      backendUrl: el.backendUrl?.value, envType: el.envType?.value, customBaseUrl: el.customBaseUrl?.value,
-      apiKey: el.apiKey?.value, appId: el.appId?.value, merchantId: el.merchantId?.value,
-      terminalSn: el.terminalSn?.value, currency: el.currency?.value, returnUrl: el.returnUrl?.value,
-    }));
+    const o = {};
+    ['backendUrl','envType','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(k => { o[k] = el[k]?.value || ''; });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(o));
   } catch { /* ignore */ }
 }
+function loadTransactions() { try { const r = localStorage.getItem(HISTORY_STORAGE_KEY); if (r) transactions = JSON.parse(r); } catch { transactions = []; } }
+function saveTransactions() { try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(transactions)); } catch {} }
 
-function loadTransactions() {
-  try {
-    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
-    if (raw) transactions = JSON.parse(raw);
-  } catch { transactions = []; }
-}
-
-function saveTransactions() {
-  try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(transactions)); } catch { /* ignore */ }
-}
-
-// === Transaction Settings (Tip, Tax, Print, Signature) ===
-const SETTINGS_STORAGE_KEY = 'taplink_cloud_demo_settings_v1';
-
+// === Settings (Tip config, Signature config, Print) ===
 function getSettings() {
   return {
     tipEnabled: document.getElementById('tipEnabled')?.checked || false,
     tipMode: document.getElementById('tipMode')?.value || 'ON_SALE',
-    tipOnScreenTip: document.getElementById('tipOnScreenTip')?.checked || true,
+    tipOnScreenTip: document.getElementById('tipOnScreenTip')?.checked ?? true,
     tipWithTax: document.getElementById('tipWithTax')?.checked || false,
     tipSuggestionsEnabled: document.getElementById('tipSuggestionsEnabled')?.checked || false,
     tipFeeMode: document.getElementById('tipFeeMode')?.value || 'RATE',
@@ -175,125 +193,58 @@ function getSettings() {
     signatureThreshold: parseInt(document.getElementById('signatureThreshold')?.value) || 5000,
   };
 }
-
-function saveSettings() {
-  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(getSettings())); } catch { /* ignore */ }
-}
-
+function saveSettings() { try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(getSettings())); } catch {} }
 function loadSettings() {
   try {
-    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return;
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY); if (!raw) return;
     const s = JSON.parse(raw);
-    const setChecked = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
-    const setValue = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
-    setChecked('tipEnabled', s.tipEnabled);
-    setValue('tipMode', s.tipMode);
-    setChecked('tipOnScreenTip', s.tipOnScreenTip);
-    setChecked('tipWithTax', s.tipWithTax);
-    setChecked('tipSuggestionsEnabled', s.tipSuggestionsEnabled);
-    setValue('tipFeeMode', s.tipFeeMode);
-    setValue('tipSuggestion1', s.tipSuggestion1);
-    setValue('tipSuggestion2', s.tipSuggestion2);
-    setValue('tipSuggestion3', s.tipSuggestion3);
-    setChecked('taxEnabled', s.taxEnabled);
-    setValue('taxRate', s.taxRate);
-    setValue('printReceipt', s.printReceipt);
-    setChecked('signatureEnabled', s.signatureEnabled);
-    setValue('signatureMode', s.signatureMode);
-    setChecked('signatureThresholdEnabled', s.signatureThresholdEnabled);
-    setValue('signatureThreshold', s.signatureThreshold);
-    // Sync visibility
+    const chk = (id, v) => { const e = document.getElementById(id); if (e) e.checked = !!v; };
+    const val = (id, v) => { const e = document.getElementById(id); if (e && v !== undefined) e.value = v; };
+    chk('tipEnabled', s.tipEnabled); val('tipMode', s.tipMode); chk('tipOnScreenTip', s.tipOnScreenTip);
+    chk('tipWithTax', s.tipWithTax); chk('tipSuggestionsEnabled', s.tipSuggestionsEnabled);
+    val('tipFeeMode', s.tipFeeMode); val('tipSuggestion1', s.tipSuggestion1); val('tipSuggestion2', s.tipSuggestion2); val('tipSuggestion3', s.tipSuggestion3);
+    chk('taxEnabled', s.taxEnabled); val('taxRate', s.taxRate); val('printReceipt', s.printReceipt);
+    chk('signatureEnabled', s.signatureEnabled); val('signatureMode', s.signatureMode);
+    chk('signatureThresholdEnabled', s.signatureThresholdEnabled); val('signatureThreshold', s.signatureThreshold);
     toggleSubSettings();
-  } catch { /* ignore */ }
+  } catch {}
 }
-
 function toggleSubSettings() {
-  const tipSettings = document.getElementById('tipSettings');
-  const tipSuggestionsPanel = document.getElementById('tipSuggestionsPanel');
-  const taxSettings = document.getElementById('taxSettings');
-  const signatureSettings = document.getElementById('signatureSettings');
-
-  if (tipSettings) tipSettings.classList.toggle('hidden', !document.getElementById('tipEnabled')?.checked);
-  if (tipSuggestionsPanel) tipSuggestionsPanel.classList.toggle('hidden', !document.getElementById('tipSuggestionsEnabled')?.checked);
-  if (taxSettings) taxSettings.classList.toggle('hidden', !document.getElementById('taxEnabled')?.checked);
-  if (signatureSettings) signatureSettings.classList.toggle('hidden', !document.getElementById('signatureEnabled')?.checked);
+  const toggle = (panelId, checkId) => { const p = document.getElementById(panelId); if (p) p.classList.toggle('hidden', !document.getElementById(checkId)?.checked); };
+  toggle('tipSettings', 'tipEnabled'); toggle('tipSuggestionsPanel', 'tipSuggestionsEnabled');
+  toggle('taxSettings', 'taxEnabled'); toggle('signatureSettings', 'signatureEnabled');
 }
 
-// Build tipConfig object for API request (matches CloudPaymentService.buildTipConfigJson)
 function buildTipConfig() {
   const s = getSettings();
   if (!s.tipEnabled) return undefined;
-  const config = {
-    useHostConfig: false,
-    onScreenTip: s.tipOnScreenTip,
-    tipMode: s.tipMode,
-    tipWithTax: s.tipWithTax,
-  };
-  if (s.tipSuggestionsEnabled) {
-    config.suggestions = {
-      feeMode: s.tipFeeMode,
-      values: [s.tipSuggestion1, s.tipSuggestion2, s.tipSuggestion3],
-    };
-  }
-  return config;
+  const c = { useHostConfig: false, onScreenTip: s.tipOnScreenTip, tipMode: s.tipMode, tipWithTax: s.tipWithTax };
+  if (s.tipSuggestionsEnabled) c.suggestions = { feeMode: s.tipFeeMode, values: [s.tipSuggestion1, s.tipSuggestion2, s.tipSuggestion3] };
+  return c;
 }
-
-// Build signatureConfig object for API request (matches CloudPaymentService.buildSignatureConfigJson)
 function buildSignatureConfig() {
   const s = getSettings();
   if (!s.signatureEnabled) return undefined;
-  const config = {
-    useHostConfig: false,
-    entryLocation: s.signatureMode, // ON_SCREEN | ON_RECEIPT | NONE
-  };
-  if (s.signatureThresholdEnabled && s.signatureThreshold > 0) {
-    config.threshold = s.signatureThreshold;
-  }
-  return config;
+  const c = { useHostConfig: false, entryLocation: s.signatureMode };
+  if (s.signatureThresholdEnabled && s.signatureThreshold > 0) c.threshold = s.signatureThreshold;
+  return c;
 }
 
-// ============================================================
-// View Navigation & Rendering
-// ============================================================
-
+// === View Navigation ===
 function navigateTo(view, opts = {}) {
   currentView = view;
-  const views = ['menuView', 'checkoutView', 'progressView', 'detailView', 'historyView'];
-  views.forEach(v => { if (el[v]) el[v].classList.add('hidden'); });
-  
-  // Show/hide floating cart only on menu view
-  if (el.floatingCart) {
-    if (view === AppView.MENU && getCartCount() > 0) el.floatingCart.classList.remove('hidden');
-    else el.floatingCart.classList.add('hidden');
-  }
-
+  ['menuView','checkoutView','progressView','detailView','historyView'].forEach(v => { if (el[v]) el[v].classList.add('hidden'); });
+  if (el.floatingCart) el.floatingCart.classList.toggle('hidden', !(view === AppView.MENU && getCartCount() > 0));
   switch (view) {
-    case AppView.MENU:
-      el.menuView.classList.remove('hidden');
-      renderMenu();
-      break;
-    case AppView.CHECKOUT:
-      el.checkoutView.classList.remove('hidden');
-      renderCheckout();
-      break;
-    case AppView.PROGRESS:
-      el.progressView.classList.remove('hidden');
-      renderProgress();
-      break;
-    case AppView.DETAIL:
-      currentDetailTxnId = opts.txnId || currentDetailTxnId;
-      el.detailView.classList.remove('hidden');
-      renderDetail();
-      break;
-    case AppView.HISTORY:
-      el.historyView.classList.remove('hidden');
-      renderHistory();
-      break;
+    case AppView.MENU: el.menuView.classList.remove('hidden'); renderMenu(); break;
+    case AppView.CHECKOUT: el.checkoutView.classList.remove('hidden'); renderCheckout(); break;
+    case AppView.PROGRESS: el.progressView.classList.remove('hidden'); renderProgress(); break;
+    case AppView.DETAIL: currentDetailTxnId = opts.txnId || currentDetailTxnId; el.detailView.classList.remove('hidden'); renderDetail(); break;
+    case AppView.HISTORY: el.historyView.classList.remove('hidden'); renderHistory(); break;
   }
 }
 
-// --- Menu Rendering ---
+// === Render Functions ===
 function renderMenu() {
   if (!el.menuGrid) return;
   el.menuGrid.innerHTML = '';
@@ -301,19 +252,7 @@ function renderMenu() {
     const qty = cart[p.id] || 0;
     const node = document.createElement('div');
     node.className = 'menu-card';
-    node.innerHTML = `
-      <div class="menu-icon">${p.icon}</div>
-      <div class="menu-info">
-        <h4>${p.name}</h4>
-        <p>${p.desc}</p>
-        <div class="menu-action">
-          <span class="price">${formatMoney(p.priceCents)}</span>
-          ${qty === 0
-            ? `<button class="add-btn" data-op="add" data-id="${p.id}" type="button">Add</button>`
-            : `<div class="stepper-ui"><button data-op="sub" data-id="${p.id}" type="button">−</button><span>${qty}</span><button data-op="add" data-id="${p.id}" type="button">+</button></div>`
-          }
-        </div>
-      </div>`;
+    node.innerHTML = `<div class="menu-icon">${p.icon}</div><div class="menu-info"><h4>${p.name}</h4><p>${p.desc}</p><div class="menu-action"><span class="price">${formatMoney(p.priceCents)}</span>${qty === 0 ? `<button class="add-btn" data-op="add" data-id="${p.id}">Add</button>` : `<div class="stepper-ui"><button data-op="sub" data-id="${p.id}">−</button><span>${qty}</span><button data-op="add" data-id="${p.id}">+</button></div>`}</div></div>`;
     el.menuGrid.appendChild(node);
   }
   updateFloatingCart();
@@ -321,828 +260,393 @@ function renderMenu() {
 
 function updateFloatingCart() {
   const count = getCartCount();
-  const total = getCartTotal();
   if (el.cartCountBadge) el.cartCountBadge.textContent = count;
-  if (el.cartTotalFloat) el.cartTotalFloat.textContent = formatMoney(total);
-  if (el.floatingCart) {
-    if (count > 0 && currentView === AppView.MENU) el.floatingCart.classList.remove('hidden');
-    else el.floatingCart.classList.add('hidden');
-  }
+  if (el.cartTotalFloat) el.cartTotalFloat.textContent = formatMoney(getOrderTotal());
+  if (el.floatingCart) el.floatingCart.classList.toggle('hidden', !(count > 0 && currentView === AppView.MENU));
 }
 
-// --- Checkout Rendering ---
 function renderCheckout() {
   if (!el.checkoutCartList) return;
   el.checkoutCartList.innerHTML = '';
-  let subtotal = 0;
+  const subtotal = getCartSubtotal();
   for (const [pid, qty] of Object.entries(cart)) {
     if (qty <= 0) continue;
     const p = PRODUCTS.find(x => x.id === pid);
     if (!p) continue;
-    subtotal += p.priceCents * qty;
     const item = document.createElement('div');
     item.className = 'cart-item';
-    item.innerHTML = `
-      <div class="cart-item-info">
-        <div class="cart-item-icon">${p.icon}</div>
-        <div>
-          <div class="cart-item-name">${p.name}</div>
-          <div class="cart-item-price">${formatMoney(p.priceCents)} × ${qty}</div>
-        </div>
-      </div>
-      <div class="cart-item-qty">${formatMoney(p.priceCents * qty)}</div>`;
+    item.innerHTML = `<div class="cart-item-info"><div class="cart-item-icon">${p.icon}</div><div><div class="cart-item-name">${p.name}</div><div class="cart-item-price">${formatMoney(p.priceCents)} × ${qty}</div></div></div><div class="cart-item-qty">${formatMoney(p.priceCents * qty)}</div>`;
     el.checkoutCartList.appendChild(item);
   }
-  const settings = getSettings();
-  const taxRate = settings.taxEnabled ? settings.taxRate : 0;
-  const tax = Math.round(subtotal * taxRate / 100);
-  const total = subtotal + tax;
+  // Read additional amounts from inputs
+  orderAmounts.tipAmount = parseInt(el.tipAmountInput?.value) || 0;
+  orderAmounts.taxAmount = parseInt(el.taxAmountInput?.value) || 0;
+  orderAmounts.surchargeAmount = parseInt(el.surchargeInput?.value) || 0;
+  orderAmounts.cashbackAmount = parseInt(el.cashbackInput?.value) || 0;
+  const total = getOrderTotal();
   if (el.checkoutSubtotal) el.checkoutSubtotal.textContent = formatMoney(subtotal);
-  if (el.checkoutTax) el.checkoutTax.textContent = formatMoney(tax);
-  if (el.checkoutTotal) el.checkoutTotal.textContent = formatMoney(total);
   const taxLabel = document.getElementById('checkoutTaxLabel');
-  if (taxLabel) taxLabel.textContent = taxRate > 0 ? `Tax (${taxRate}%)` : 'Tax';
+  if (taxLabel) taxLabel.textContent = 'Tax';
+  if (el.checkoutTax) el.checkoutTax.textContent = formatMoney(orderAmounts.taxAmount);
+  if (el.checkoutTotal) el.checkoutTotal.textContent = formatMoney(total);
   if (el.payBtnAmount) el.payBtnAmount.textContent = formatMoney(total);
   if (el.payBtn) el.payBtn.disabled = total <= 0;
 }
 
-// --- Progress Rendering ---
 function renderProgress() {
   if (!activeTxn) return;
   if (el.progressType) el.progressType.textContent = activeTxn.type || 'Sale';
   if (el.progressAmount) el.progressAmount.textContent = formatMoney(activeTxn.totalCents || 0);
-  
   const status = activeTxn.status;
   const spinner = document.querySelector('.progress-spinner');
-  
   if (status === TxnStatus.SUCCESS) {
-    if (el.progressTitle) el.progressTitle.textContent = 'Payment Successful';
-    if (el.progressSubtitle) el.progressSubtitle.textContent = 'Transaction completed.';
+    if (el.progressTitle) el.progressTitle.textContent = 'Transaction Successful';
+    if (el.progressSubtitle) el.progressSubtitle.textContent = 'Completed.';
     if (spinner) { spinner.classList.add('done'); spinner.classList.remove('error'); }
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
-    removeCheckoutLink();
-    showViewDetailBtn();
+    removeCheckoutLink(); showViewDetailBtn();
   } else if (status === TxnStatus.FAILED) {
-    if (el.progressTitle) el.progressTitle.textContent = 'Payment Failed';
-    if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.errorMessage || 'Transaction was declined or aborted.';
+    if (el.progressTitle) el.progressTitle.textContent = 'Transaction Failed';
+    if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.errorMessage || 'Declined or aborted.';
     if (spinner) { spinner.classList.add('error'); spinner.classList.remove('done'); }
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
-    removeCheckoutLink();
-    showViewDetailBtn();
+    removeCheckoutLink(); showViewDetailBtn();
   } else {
-    if (el.progressTitle) el.progressTitle.textContent = 'Processing Payment';
-    if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.progressMessage || 'Connecting to payment terminal...';
+    if (el.progressTitle) el.progressTitle.textContent = 'Processing...';
+    if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.progressMessage || 'Waiting for terminal...';
     if (spinner) { spinner.classList.remove('done', 'error'); }
-    if (el.abortBtn) {
-      el.abortBtn.classList.remove('hidden');
-      el.abortBtn.disabled = false;
-      el.abortBtn.textContent = activeTxn.channel === 'online' ? 'Close Session' : 'Abort Transaction';
-    }
+    if (el.abortBtn) { el.abortBtn.classList.remove('hidden'); el.abortBtn.disabled = false; el.abortBtn.textContent = activeTxn.channel === 'online' ? 'Close Session' : 'Abort Transaction'; }
     removeViewDetailBtn();
   }
 }
 
-function showViewDetailBtn() {
-  if (document.getElementById('viewDetailBtn')) return;
-  const btn = document.createElement('button');
-  btn.id = 'viewDetailBtn';
-  btn.className = 'view-detail-btn';
-  btn.textContent = 'View Details';
-  btn.onclick = () => navigateTo(AppView.DETAIL, { txnId: activeTxn?.id });
-  el.progressView.querySelector('.progress-actions')?.appendChild(btn);
-}
+function showViewDetailBtn() { if (document.getElementById('viewDetailBtn')) return; const b = document.createElement('button'); b.id = 'viewDetailBtn'; b.className = 'view-detail-btn'; b.textContent = 'View Details'; b.onclick = () => navigateTo(AppView.DETAIL, { txnId: activeTxn?.id }); el.progressView?.querySelector('.progress-actions')?.appendChild(b); }
+function removeViewDetailBtn() { document.getElementById('viewDetailBtn')?.remove(); }
+function showCheckoutLink(url) { removeCheckoutLink(); const c = document.createElement('div'); c.id = 'checkoutLinkContainer'; c.className = 'checkout-link-container'; c.innerHTML = `<p class="checkout-link-label">Payment page ready:</p><a href="${url}" target="_blank" rel="noopener" class="checkout-link-btn">Open Checkout ↗</a><p class="checkout-link-url">${url}</p>`; const a = el.progressView?.querySelector('.progress-animation'); if (a) a.after(c); }
+function removeCheckoutLink() { document.getElementById('checkoutLinkContainer')?.remove(); }
 
-function removeViewDetailBtn() {
-  const btn = document.getElementById('viewDetailBtn');
-  if (btn) btn.remove();
-}
-
-function addTimelineItem(text) {
-  logEvent(text);
-}
-
-function showCheckoutLink(url) {
-  removeCheckoutLink();
-  const container = document.createElement('div');
-  container.id = 'checkoutLinkContainer';
-  container.className = 'checkout-link-container';
-  container.innerHTML = `
-    <p class="checkout-link-label">Payment page is ready:</p>
-    <a href="${url}" target="_blank" rel="noopener noreferrer" class="checkout-link-btn">Open Checkout Page ↗</a>
-    <p class="checkout-link-url">${url}</p>`;
-  // Insert after progress-animation
-  const animation = el.progressView?.querySelector('.progress-animation');
-  if (animation) animation.after(container);
-}
-
-function removeCheckoutLink() {
-  document.getElementById('checkoutLinkContainer')?.remove();
-}
-
-// --- Detail Rendering ---
 function renderDetail() {
   const txn = transactions.find(t => t.id === currentDetailTxnId);
   if (!txn) { navigateTo(AppView.MENU); return; }
+  let iconClass = 'processing', iconChar = '⏳', title = 'Processing';
+  if (txn.status === TxnStatus.SUCCESS) { iconClass = 'success'; iconChar = '✓'; title = 'Successful'; }
+  else if (txn.status === TxnStatus.FAILED) { iconClass = 'error'; iconChar = '✕'; title = 'Failed'; }
+  el.detailResult.innerHTML = `<div class="result-icon ${iconClass}">${iconChar}</div><h2>${txn.type} - ${title}</h2>${txn.errorMessage ? `<p class="text-muted">${txn.errorMessage}</p>` : ''}<div class="result-amount">${formatMoney(txn.totalCents || 0)}</div>`;
+  const fields = [['Type', txn.type], ['Status', txn.status], ['Order ID', txn.orderId || '-'], ['Request ID', txn.requestId || '-'], ['Transaction ID', txn.transactionId || '-'], ['Channel', txn.channel || '-'], ['Created', formatDate(txn.createdAt)]];
+  el.detailFields.innerHTML = fields.map(([l, v]) => `<div class="detail-field"><span class="detail-field-label">${l}</span><span class="detail-field-value">${v}</span></div>`).join('');
 
-  // Result icon
-  let iconClass = 'processing', iconChar = '⏳', title = 'Processing', subtitle = '';
-  if (txn.status === TxnStatus.SUCCESS) { iconClass = 'success'; iconChar = '✓'; title = 'Payment Successful'; }
-  else if (txn.status === TxnStatus.FAILED) { iconClass = 'error'; iconChar = '✕'; title = 'Payment Failed'; subtitle = txn.errorMessage || ''; }
+  // Build actions based on transaction type & status
+  let actions = '';
 
-  el.detailResult.innerHTML = `
-    <div class="result-icon ${iconClass}">${iconChar}</div>
-    <h2>${title}</h2>
-    ${subtitle ? `<p class="text-muted">${subtitle}</p>` : ''}
-    <div class="result-amount">${formatMoney(txn.totalCents || 0)}</div>`;
-
-  // Fields
-  const fields = [
-    ['Type', txn.type || 'Sale'],
-    ['Status', txn.status],
-    ['Order ID', txn.orderId || '-'],
-    ['Request ID', txn.requestId || '-'],
-    ['Transaction ID', txn.transactionId || '-'],
-    ['Created', formatDate(txn.createdAt)],
-  ];
-  if (txn.result?.transactionResultCode) fields.push(['Result Code', txn.result.transactionResultCode]);
-  if (txn.result?.cardBrand) fields.push(['Card Brand', txn.result.cardBrand]);
-  if (txn.result?.maskedPan) fields.push(['Card Number', txn.result.maskedPan]);
-
-  el.detailFields.innerHTML = fields.map(([label, value]) =>
-    `<div class="detail-field"><span class="detail-field-label">${label}</span><span class="detail-field-value">${value}</span></div>`
-  ).join('');
-
-  // Actions
-  let actionsHtml = '';
   if (txn.status === TxnStatus.SUCCESS) {
     if (txn.channel === 'online') {
-      actionsHtml += `<button class="primary-btn refund-btn" id="detailExpireBtn" type="button">Close Session (Expire)</button>`;
+      actions += `<button class="primary-btn refund-btn" id="detailExpireBtn">Close Session</button>`;
     } else {
-      actionsHtml += `<button class="primary-btn refund-btn" id="detailRefundBtn" type="button">Refund</button>`;
+      // Sale success → Void, Refund, Tip Adjust
+      if (txn.type === TxnType.SALE || txn.type === TxnType.FORCED_AUTH) {
+        actions += `<button class="primary-btn" id="detailVoidBtn">Void</button>`;
+        actions += `<button class="primary-btn refund-btn" id="detailRefundBtn">Refund</button>`;
+        actions += `<button class="ghost-btn" id="detailTipAdjustBtn">Tip Adjust</button>`;
+      }
+      // Auth success → Void, Post Auth, Incremental Auth
+      if (txn.type === TxnType.AUTH) {
+        actions += `<button class="primary-btn" id="detailVoidBtn">Void</button>`;
+        actions += `<button class="primary-btn" id="detailPostAuthBtn">Post Auth (Capture)</button>`;
+        actions += `<button class="ghost-btn" id="detailIncrAuthBtn">Incremental Auth</button>`;
+      }
     }
   }
+
   if (txn.status === TxnStatus.PROCESSING) {
     if (txn.channel === 'online') {
-      actionsHtml += `<button class="primary-btn refund-btn" id="detailExpireBtn" type="button">Close Session (Expire)</button>`;
-    } else {
-      actionsHtml += `<button class="primary-btn refund-btn" id="detailAbortBtn" type="button">Abort</button>`;
+      actions += `<button class="primary-btn refund-btn" id="detailExpireBtn">Close Session</button>`;
     }
   }
-  actionsHtml += `<button class="ghost-btn" id="detailQueryBtn" type="button">Query Status</button>`;
-  actionsHtml += `<button class="ghost-btn" id="detailBackBtn" type="button">Back to Menu</button>`;
-  actionsHtml += `<button class="ghost-btn" id="detailHistoryBtn" type="button">View All Transactions</button>`;
-  el.detailActions.innerHTML = actionsHtml;
 
-  // Bind detail action events
+  actions += `<button class="ghost-btn" id="detailQueryBtn">Query Status</button>`;
+  actions += `<button class="ghost-btn" id="detailBackBtn">Back to Menu</button>`;
+  actions += `<button class="ghost-btn" id="detailHistoryBtn">All Transactions</button>`;
+  el.detailActions.innerHTML = actions;
+
+  // Bind events
   document.getElementById('detailRefundBtn')?.addEventListener('click', () => executeRefund(txn));
   document.getElementById('detailExpireBtn')?.addEventListener('click', () => executeExpireSession(txn));
-  document.getElementById('detailAbortBtn')?.addEventListener('click', () => { activeTxn = txn; executeAbort(); });
-  document.getElementById('detailQueryBtn')?.addEventListener('click', () => executeQuery(txn));
+  document.getElementById('detailVoidBtn')?.addEventListener('click', () => executeVoidFromDetail(txn));
+  document.getElementById('detailTipAdjustBtn')?.addEventListener('click', () => executeTipAdjustFromDetail(txn));
+  document.getElementById('detailPostAuthBtn')?.addEventListener('click', () => executePostAuthFromDetail(txn));
+  document.getElementById('detailIncrAuthBtn')?.addEventListener('click', () => executeIncrementalAuthFromDetail(txn));
+  document.getElementById('detailQueryBtn')?.addEventListener('click', () => runQuery(txn.requestId));
   document.getElementById('detailBackBtn')?.addEventListener('click', () => { cart = {}; navigateTo(AppView.MENU); });
   document.getElementById('detailHistoryBtn')?.addEventListener('click', () => navigateTo(AppView.HISTORY));
 }
 
-// --- History Rendering ---
 function renderHistory() {
   if (!el.historyList) return;
   const filtered = historyFilter === 'all' ? transactions : transactions.filter(t => t.status === historyFilter);
-  
-  if (filtered.length === 0) {
-    el.historyList.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span><p>No transactions yet</p></div>`;
-    return;
-  }
-
+  if (filtered.length === 0) { el.historyList.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span><p>No transactions yet</p></div>`; return; }
   el.historyList.innerHTML = filtered.sort((a, b) => b.createdAt - a.createdAt).map(txn => {
-    const statusClass = txn.status === TxnStatus.SUCCESS ? 'success' : txn.status === TxnStatus.FAILED ? 'error' : txn.status === TxnStatus.PROCESSING ? 'processing' : 'pending';
-    return `
-      <div class="history-card" data-txn-id="${txn.id}">
-        <div class="history-card-status ${statusClass}"></div>
-        <div class="history-card-body">
-          <div class="history-card-title">${txn.type || 'Sale'} <span class="status-badge ${statusClass}">${txn.status}</span></div>
-          <div class="history-card-sub">${txn.requestId || '-'}</div>
-        </div>
-        <div class="history-card-right">
-          <div class="history-card-amount">${formatMoney(txn.totalCents || 0)}</div>
-          <div class="history-card-time">${formatDate(txn.createdAt)}</div>
-        </div>
-      </div>`;
+    const sc = txn.status === TxnStatus.SUCCESS ? 'success' : txn.status === TxnStatus.FAILED ? 'error' : 'processing';
+    return `<div class="history-card" data-txn-id="${txn.id}"><div class="history-card-status ${sc}"></div><div class="history-card-body"><div class="history-card-title">${txn.type} <span class="status-badge ${sc}">${txn.status}</span></div><div class="history-card-sub">${txn.requestId || '-'}</div></div><div class="history-card-right"><div class="history-card-amount">${formatMoney(txn.totalCents || 0)}</div><div class="history-card-time">${formatDate(txn.createdAt)}</div></div></div>`;
   }).join('');
 }
 
 // ============================================================
-// API Calls (via /api/proxy → SUNBAY Cloud)
+// API Layer (aligned with CloudPaymentService)
 // ============================================================
-
 async function callProxy(method, path, payload, query = {}) {
   const cfg = getConfig();
   const headers = { 'Content-Type': 'application/json', 'X-Timestamp': `${Date.now()}`, 'X-Client-Request-Id': uid('CID') };
-  const auth = buildAuth();
-  if (auth) headers['Authorization'] = auth;
-
-  const body = {
-    mode: 'real',
-    base_url: cfg.baseUrl,
-    method,
-    path,
-    headers,
-    payload: method === 'GET' ? {} : payload,
-    query: method === 'GET' ? payload : query,
-  };
-
-  const response = await fetch(`${cfg.backendUrl || window.location.origin}/api/proxy`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json();
-  return data;
+  const auth = buildAuth(); if (auth) headers['Authorization'] = auth;
+  const body = { mode: 'real', base_url: cfg.baseUrl, method, path, headers, payload: method === 'GET' ? {} : payload, query: method === 'GET' ? payload : query };
+  const resp = await fetch(`${cfg.backendUrl}/api/proxy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return await resp.json();
 }
 
-// --- Get selected payment channel ---
-function getSelectedChannel() {
-  const radio = document.querySelector('input[name="payChannel"]:checked');
-  return radio ? radio.value : 'terminal';
-}
-
-// --- Execute Sale (Terminal: semi-integration) ---
-async function executeSale() {
+function basePayload() {
   const cfg = getConfig();
-  const settings = getSettings();
-  const subtotal = getCartTotal();
-  const taxRate = settings.taxEnabled ? settings.taxRate : 0;
-  const tax = Math.round(subtotal * taxRate / 100);
-  const total = subtotal + tax;
-
-  const orderId = uid('ORDER');
-  const requestId = uid('REQ');
-  const productList = Object.entries(cart).filter(([, q]) => q > 0).map(([pid, qty]) => {
-    const p = PRODUCTS.find(x => x.id === pid);
-    return { amount: p.priceCents * qty, name: p.name, num: qty };
-  });
-  const description = productList.map(it => `${it.name} x${it.num}`).join(', ');
-
-  // Create transaction record
-  const tipConfig = buildTipConfig();
-  // amount.tipAmount and tipConfig are mutually exclusive
-  const amountObj = { orderAmount: subtotal, taxAmount: tax, priceCurrency: cfg.currency, totalAmount: total };
-  if (!tipConfig) {
-    // Only include tipAmount/surchargeAmount when NOT using tipConfig
-    // And only if they have actual values (don't send 0)
-  }
-
-  const txn = {
-    id: requestId,
-    orderId,
-    requestId,
-    transactionId: null,
-    type: 'Sale',
-    channel: 'terminal', // 'terminal' = semi-integration, 'online' = checkout session
-    totalCents: total,
-    amount: amountObj,
-    status: TxnStatus.PROCESSING,
-    progressMessage: 'Sending to terminal...',
-    errorMessage: null,
-    events: [],
-    result: {},
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    terminalEnded: false,
-    notifyStatus: null,
-    seenEventKeys: [],
-  };
-
-  activeTxn = txn;
-  transactions.push(txn);
-  saveTransactions();
-
-  // Navigate to progress
-  navigateTo(AppView.PROGRESS);
-  addTimelineItem('Transaction initiated');
-
-  // Connect SSE
-  connectEventStream();
-  startRecentEventPolling();
-
-  // Update dev console
-  updateDevConsole();
-
-  const payload = {
-    appId: cfg.appId,
-    merchantId: cfg.merchantId,
-    referenceOrderId: orderId,
-    transactionRequestId: requestId,
-    amount: amountObj,
-    description,
-    terminalSn: cfg.terminalSn,
-    notifyUrl: FIXED_NOTIFY_WEBHOOK_URL,
-    terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL,
-    printReceipt: settings.printReceipt !== 'NONE' ? settings.printReceipt : undefined,
-    tipConfig: tipConfig || undefined,
-    signatureConfig: buildSignatureConfig(),
-  };
-
-  try {
-    const result = await callProxy('POST', '/v1/semi-integration/transaction/sale', payload);
-    const respCode = extractCodeFromResponse(result.data);
-    const respMsg = extractMsgFromResponse(result.data);
-    addTimelineItem(`Gateway responded: HTTP ${result.httpStatus || '?'}, code=${respCode || '0'}`);
-    logEvent(`HTTP ${result.httpStatus}: POST sale, code=${respCode}, msg=${respMsg}`);
-
-    if (respCode && respCode !== '0') {
-      // API returned an error (e.g. parameter error)
-      activeTxn.status = TxnStatus.FAILED;
-      activeTxn.errorMessage = `[${respCode}] ${respMsg}`;
-      activeTxn.updatedAt = Date.now();
-      saveTransactions();
-      renderProgress();
-      stopRecentEventPolling();
-    } else {
-      // Extract IDs from response
-      const ids = extractIdsFromResponse(result.data);
-      if (ids.transactionId) { txn.transactionId = ids.transactionId; }
-      if (ids.transactionRequestId) { txn.requestId = ids.transactionRequestId; }
-    }
-    updateDevConsole();
-  } catch (err) {
-    addTimelineItem(`Request failed: ${err.message}. Waiting for webhook callback...`);
-    logEvent(`Request failed: ${err.message}`);
-  }
+  return { appId: cfg.appId, merchantId: cfg.merchantId, terminalSn: cfg.terminalSn };
 }
 
-// --- Execute Online Checkout (Create Checkout Session) ---
+function buildAmountObj() {
+  const subtotal = getCartSubtotal();
+  const obj = { orderAmount: subtotal, priceCurrency: getConfig().currency };
+  // Only include non-zero additional amounts; tipConfig and tipAmount are mutually exclusive
+  const tipConfig = buildTipConfig();
+  if (!tipConfig && orderAmounts.tipAmount > 0) obj.tipAmount = orderAmounts.tipAmount;
+  if (orderAmounts.taxAmount > 0) obj.taxAmount = orderAmounts.taxAmount;
+  if (orderAmounts.surchargeAmount > 0) obj.surchargeAmount = orderAmounts.surchargeAmount;
+  if (orderAmounts.cashbackAmount > 0) obj.cashbackAmount = orderAmounts.cashbackAmount;
+  // totalAmount = sum of all
+  obj.totalAmount = subtotal + (obj.tipAmount || 0) + (obj.taxAmount || 0) + (obj.surchargeAmount || 0) + (obj.cashbackAmount || 0);
+  return obj;
+}
+
+function createTxnRecord(type, channel = 'terminal') {
+  const requestId = uid('REQ');
+  const txn = { id: requestId, orderId: uid('ORDER'), requestId, transactionId: null, type, channel, totalCents: getOrderTotal(), amount: buildAmountObj(), status: TxnStatus.PROCESSING, progressMessage: 'Sending request...', errorMessage: null, events: [], result: {}, createdAt: Date.now(), updatedAt: Date.now(), terminalEnded: false, notifyStatus: null, seenEventKeys: [] };
+  activeTxn = txn; transactions.push(txn); saveTransactions();
+  return txn;
+}
+
+function startTxnProgress(txn) {
+  navigateTo(AppView.PROGRESS); logEvent(`${txn.type} initiated`); connectEventStream(); startRecentEventPolling(); updateDevConsole();
+}
+
+async function handleApiResult(result, txn) {
+  const code = extractCodeFromResponse(result.data);
+  const msg = extractMsgFromResponse(result.data);
+  logEvent(`HTTP ${result.httpStatus}: code=${code || '0'}, msg=${msg}`);
+  if (code && code !== '0') {
+    txn.status = TxnStatus.FAILED; txn.errorMessage = `[${code}] ${msg}`; txn.updatedAt = Date.now();
+    saveTransactions(); renderProgress(); stopRecentEventPolling(); updateDevConsole(); return false;
+  }
+  const ids = extractIdsFromResponse(result.data);
+  if (ids.transactionId) txn.transactionId = ids.transactionId;
+  if (ids.transactionRequestId) txn.requestId = ids.transactionRequestId;
+  updateDevConsole(); return true;
+}
+
+// --- Sale ---
+async function executeSale() {
+  const cfg = getConfig(); const s = getSettings();
+  const txn = createTxnRecord(TxnType.SALE); startTxnProgress(txn);
+  const description = Object.entries(cart).filter(([,q]) => q > 0).map(([pid, qty]) => { const p = PRODUCTS.find(x => x.id === pid); return `${p.name} x${qty}`; }).join(', ') || 'Sale';
+  const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL, printReceipt: s.printReceipt !== 'NONE' ? s.printReceipt : undefined, tipConfig: buildTipConfig(), signatureConfig: buildSignatureConfig() };
+  try { const r = await callProxy('POST', API_PATHS.SALE, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
+}
+
+// --- Auth ---
+async function executeAuth() {
+  const txn = createTxnRecord(TxnType.AUTH); startTxnProgress(txn);
+  const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description: 'Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, signatureConfig: buildSignatureConfig(), notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+  try { const r = await callProxy('POST', API_PATHS.AUTH, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
+}
+
+// --- Forced Auth ---
+async function executeForcedAuth() {
+  const txn = createTxnRecord(TxnType.FORCED_AUTH); startTxnProgress(txn);
+  const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description: 'Forced Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+  try { const r = await callProxy('POST', API_PATHS.FORCED_AUTH, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
+}
+
+// --- Refund (referenced, from Detail) ---
+async function executeRefund(origTxn) {
+  if (!origTxn?.transactionId && !origTxn?.requestId) { logEvent('Refund requires original transaction'); return; }
+  const txn = createTxnRecord(TxnType.REFUND); startTxnProgress(txn);
+  const payload = { ...basePayload(), transactionRequestId: txn.requestId, amount: { orderAmount: origTxn.totalCents || txn.amount.orderAmount, priceCurrency: getConfig().currency }, description: 'Refund', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL, pushToTerminal: true };
+  if (origTxn.transactionId) payload.originalTransactionId = origTxn.transactionId;
+  else if (origTxn.requestId) payload.originalTransactionRequestId = origTxn.requestId;
+  try { const r = await callProxy('POST', API_PATHS.REFUND, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
+}
+
+// --- Batch Close ---
+async function executeBatchClose() {
+  const txn = createTxnRecord(TxnType.BATCH_CLOSE); startTxnProgress(txn);
+  // Step 1: Query batch
+  const queryPayload = { appId: getConfig().appId, merchantId: getConfig().merchantId, terminalSn: getConfig().terminalSn };
+  try {
+    const qr = await callProxy('GET', API_PATHS.BATCH_QUERY, queryPayload);
+    const qCode = extractCodeFromResponse(qr.data);
+    if (qCode && qCode !== '0') { txn.status = TxnStatus.FAILED; txn.errorMessage = `Batch query: [${qCode}] ${extractMsgFromResponse(qr.data)}`; txn.updatedAt = Date.now(); saveTransactions(); renderProgress(); return; }
+    logEvent(`Batch query OK`);
+    // Step 2: Close
+    const payload = { ...basePayload(), transactionRequestId: txn.requestId, printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : 'AUTO', notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+    const r = await callProxy('POST', API_PATHS.BATCH_CLOSE, payload);
+    await handleApiResult(r, txn);
+  } catch (e) { logEvent(`Batch close failed: ${e.message}`); }
+}
+
+// --- Query ---
+async function runQuery(requestId) {
+  const cfg = getConfig();
+  const payload = { appId: cfg.appId, merchantId: cfg.merchantId, transactionRequestId: requestId || activeTxn?.requestId || '' };
+  try {
+    const r = await callProxy('GET', API_PATHS.QUERY, payload);
+    logEvent(`Query: HTTP ${r.httpStatus}`);
+    const status = extractStatusFromResponse(r.data);
+    if (status && activeTxn && activeTxn.requestId === payload.transactionRequestId) {
+      activeTxn.status = status; activeTxn.updatedAt = Date.now();
+      const ids = extractIdsFromResponse(r.data); if (ids.transactionId) activeTxn.transactionId = ids.transactionId;
+      saveTransactions(); if (currentView === AppView.PROGRESS) renderProgress(); if (currentView === AppView.DETAIL) renderDetail(); updateDevConsole();
+    }
+  } catch (e) { logEvent(`Query failed: ${e.message}`); }
+}
+
+// --- Online Checkout ---
 async function executeOnlineCheckout() {
   const cfg = getConfig();
-  const settings = getSettings();
-  const subtotal = getCartTotal();
-  const taxRate = settings.taxEnabled ? settings.taxRate : 0;
-  const tax = Math.round(subtotal * taxRate / 100);
-  const total = subtotal + tax;
-
-  const orderId = uid('ORDER');
-  const requestId = uid('REQ');
-  const productList = Object.entries(cart).filter(([, q]) => q > 0).map(([pid, qty]) => {
-    const p = PRODUCTS.find(x => x.id === pid);
-    return { amount: p.priceCents * qty, name: p.name, num: qty };
-  });
-  const description = productList.map(it => `${it.name} x${it.num}`).join(', ');
-
-  // Create transaction record
-  const txn = {
-    id: requestId,
-    orderId,
-    requestId,
-    transactionId: null,
-    type: 'Checkout Session',
-    channel: 'online', // online checkout session
-    totalCents: total,
-    amount: { orderAmount: subtotal, taxAmount: tax, priceCurrency: cfg.currency, totalAmount: total },
-    status: TxnStatus.PROCESSING,
-    progressMessage: 'Creating checkout session...',
-    errorMessage: null,
-    events: [],
-    result: {},
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    terminalEnded: false,
-    notifyStatus: null,
-    seenEventKeys: [],
-  };
-
-  activeTxn = txn;
-  transactions.push(txn);
-  saveTransactions();
-
-  navigateTo(AppView.PROGRESS);
-  addTimelineItem('Creating online checkout session...');
-  connectEventStream();
-  startRecentEventPolling();
-  updateDevConsole();
-
-  // Build merchantReturnUrl: use our own return page so user can come back to the demo
+  const txn = createTxnRecord(TxnType.CHECKOUT_SESSION, 'online'); startTxnProgress(txn);
+  const productList = Object.entries(cart).filter(([,q]) => q > 0).map(([pid, qty]) => { const p = PRODUCTS.find(x => x.id === pid); return { amount: p.priceCents * qty, name: p.name, num: qty }; });
+  const description = productList.map(it => `${it.name} x${it.num}`).join(', ') || 'Checkout';
   const returnBaseUrl = `${window.location.origin}/return.html`;
-  const merchantReturnUrl = cfg.returnUrl || returnBaseUrl;
-
-  const payload = {
-    appId: cfg.appId,
-    merchantId: cfg.merchantId,
-    referenceOrderId: orderId,
-    transactionRequestId: requestId,
-    amount: txn.amount,
-    description,
-    productList,
-    merchantReturnUrl,
-    notifyUrl: FIXED_NOTIFY_WEBHOOK_URL,
-    terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL,
-  };
-
+  const payload = { appId: cfg.appId, merchantId: cfg.merchantId, referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description, productList, merchantReturnUrl: cfg.returnUrl || returnBaseUrl, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
   try {
-    const result = await callProxy('POST', '/v1/checkout/create-session', payload);
-    const respCode = extractCodeFromResponse(result.data);
-    const respMsg = extractMsgFromResponse(result.data);
-    addTimelineItem(`Gateway responded: HTTP ${result.httpStatus || '?'}, code=${respCode || '0'}`);
-    logEvent(`HTTP ${result.httpStatus}: POST create-session, code=${respCode}, msg=${respMsg}`);
-
-    if (respCode && respCode !== '0') {
-      // API returned an error
-      activeTxn.status = TxnStatus.FAILED;
-      activeTxn.errorMessage = `[${respCode}] ${respMsg}`;
-      activeTxn.updatedAt = Date.now();
-      saveTransactions();
-      renderProgress();
-      stopRecentEventPolling();
-      updateDevConsole();
-      return;
-    }
-
-    const ids = extractIdsFromResponse(result.data);
-    if (ids.transactionId) { txn.transactionId = ids.transactionId; }
-    if (ids.transactionRequestId) { txn.requestId = ids.transactionRequestId; }
-
-    // Extract checkout URL if present
-    const nodes = collectPlainObjects(result.data);
-    for (const node of nodes) {
-      if (node.checkoutUrl) { txn.checkoutUrl = node.checkoutUrl; break; }
-      if (node.sessionId) { txn.sessionId = node.sessionId; break; }
-    }
-
-    // Show checkout link on progress page
-    if (txn.checkoutUrl) {
-      showCheckoutLink(txn.checkoutUrl);
-      if (el.progressSubtitle) el.progressSubtitle.textContent = 'Checkout session created. Please complete payment.';
-    }
-
-    updateDevConsole();
-  } catch (err) {
-    addTimelineItem(`Request failed: ${err.message}. Waiting for webhook callback...`);
-    logEvent(`Request failed: ${err.message}`);
-  }
+    const r = await callProxy('POST', API_PATHS.CHECKOUT_CREATE, payload);
+    if (!(await handleApiResult(r, txn))) return;
+    const nodes = collectPlainObjects(r.data);
+    for (const n of nodes) { if (n.checkoutUrl) { txn.checkoutUrl = n.checkoutUrl; break; } }
+    if (txn.checkoutUrl) { showCheckoutLink(txn.checkoutUrl); if (el.progressSubtitle) el.progressSubtitle.textContent = 'Checkout session created. Complete payment in new tab.'; }
+  } catch (e) { logEvent(`Request failed: ${e.message}`); }
 }
 
-// --- Execute Abort (channel-aware) ---
-// Terminal transactions: POST /v1/semi-integration/transaction/abort
-// Online transactions:  POST /v1/checkout/expire-session
+// --- Abort (channel-aware) ---
 async function executeAbort() {
   if (!activeTxn) return;
-  const cfg = getConfig();
-  const isOnline = activeTxn.channel === 'online';
-
-  if (el.abortBtn) { el.abortBtn.disabled = true; el.abortBtn.textContent = isOnline ? 'Closing session...' : 'Aborting...'; }
-  addTimelineItem(isOnline ? 'Sending expire-session request...' : 'Sending abort request...');
-
-  let path, payload;
-  if (isOnline) {
-    // Online checkout: expire/close the session
-    path = '/v1/checkout/expire-session';
-    payload = {
-      appId: cfg.appId,
-      merchantId: cfg.merchantId,
-      transactionRequestId: activeTxn.requestId || undefined,
-      referenceOrderId: activeTxn.orderId || undefined,
-    };
-  } else {
-    // Terminal semi-integration: abort the transaction
-    path = '/v1/semi-integration/transaction/abort';
-    payload = {
-      appId: cfg.appId,
-      merchantId: cfg.merchantId,
-      terminalSn: cfg.terminalSn,
-      originalTransactionId: activeTxn.transactionId || undefined,
-      originalTransactionRequestId: activeTxn.requestId || undefined,
-      description: 'User cancelled',
-    };
-  }
-
+  const cfg = getConfig(); const isOnline = activeTxn.channel === 'online';
+  if (el.abortBtn) { el.abortBtn.disabled = true; el.abortBtn.textContent = 'Processing...'; }
+  const path = isOnline ? API_PATHS.CHECKOUT_EXPIRE : API_PATHS.ABORT;
+  const payload = isOnline ? { appId: cfg.appId, merchantId: cfg.merchantId, transactionRequestId: activeTxn.requestId, referenceOrderId: activeTxn.orderId } : { ...basePayload(), originalTransactionId: activeTxn.transactionId || undefined, originalTransactionRequestId: activeTxn.requestId || undefined, description: 'User cancelled' };
   try {
-    const result = await callProxy('POST', path, payload);
-    const respCode = extractCodeFromResponse(result.data);
-    const isApiSuccess = respCode === '0' || respCode === '';
-    addTimelineItem(`${isOnline ? 'Expire-session' : 'Abort'} response: HTTP ${result.httpStatus || '?'} code=${respCode || 'N/A'}`);
-    logEvent(`${isOnline ? 'Expire-session' : 'Abort'} response: HTTP ${result.httpStatus}, code=${respCode}`);
-
-    if (isApiSuccess) {
-      // Mark as failed (aborted/closed)
-      activeTxn.status = TxnStatus.FAILED;
-      activeTxn.errorMessage = isOnline ? 'Checkout session expired/closed' : 'Transaction aborted by user';
-      activeTxn.updatedAt = Date.now();
-      saveTransactions();
-      renderProgress();
-    } else {
-      // API returned error
-      const msg = extractMsgFromResponse(result.data);
-      logEvent(`${isOnline ? 'Expire-session' : 'Abort'} failed: [${respCode}] ${msg}`);
-      if (el.abortBtn) { el.abortBtn.disabled = false; el.abortBtn.textContent = isOnline ? 'Close Session' : 'Abort Transaction'; }
-    }
-    updateDevConsole();
-  } catch (err) {
-    addTimelineItem(`${isOnline ? 'Expire-session' : 'Abort'} failed: ${err.message}`);
-    if (el.abortBtn) { el.abortBtn.disabled = false; el.abortBtn.textContent = isOnline ? 'Close Session' : 'Abort Transaction'; }
-  }
+    const r = await callProxy('POST', path, payload);
+    const code = extractCodeFromResponse(r.data);
+    logEvent(`${isOnline ? 'Expire' : 'Abort'}: code=${code || '0'}`);
+    if (!code || code === '0') { activeTxn.status = TxnStatus.FAILED; activeTxn.errorMessage = isOnline ? 'Session closed' : 'Aborted'; activeTxn.updatedAt = Date.now(); saveTransactions(); renderProgress(); updateDevConsole(); }
+    else { logEvent(`Failed: [${code}] ${extractMsgFromResponse(r.data)}`); if (el.abortBtn) { el.abortBtn.disabled = false; el.abortBtn.textContent = isOnline ? 'Close Session' : 'Abort Transaction'; } }
+  } catch (e) { logEvent(`Failed: ${e.message}`); if (el.abortBtn) { el.abortBtn.disabled = false; } }
 }
 
-// --- Execute Expire Session (Close online checkout) ---
-// POST /v1/checkout/expire-session
+// --- Expire Session (Detail view) ---
 async function executeExpireSession(txn) {
   if (!txn) return;
-  const cfg = getConfig();
-
-  const btn = document.getElementById('detailExpireBtn');
+  const cfg = getConfig(); const btn = document.getElementById('detailExpireBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Closing...'; }
-
-  const payload = {
-    appId: cfg.appId,
-    merchantId: cfg.merchantId,
-    transactionRequestId: txn.requestId || undefined,
-    referenceOrderId: txn.orderId || undefined,
-  };
-
+  const payload = { appId: cfg.appId, merchantId: cfg.merchantId, transactionRequestId: txn.requestId, referenceOrderId: txn.orderId };
   try {
-    const result = await callProxy('POST', '/v1/checkout/expire-session', payload);
-    const respCode = extractCodeFromResponse(result.data);
-    const isApiSuccess = respCode === '0' || respCode === '';
-    logEvent(`Expire-session response: HTTP ${result.httpStatus}, code=${respCode}`);
-
-    if (isApiSuccess) {
-      txn.status = TxnStatus.FAILED;
-      txn.errorMessage = 'Checkout session expired/closed';
-      txn.updatedAt = Date.now();
-      saveTransactions();
-      renderDetail();
-      updateDevConsole();
-    } else {
-      const msg = extractMsgFromResponse(result.data);
-      logEvent(`Expire-session failed: [${respCode}] ${msg}`);
-      if (btn) { btn.disabled = false; btn.textContent = 'Close Session (Expire)'; }
-    }
-    updateDevConsole();
-  } catch (err) {
-    logEvent(`Expire-session failed: ${err.message}`);
-    if (btn) { btn.disabled = false; btn.textContent = 'Close Session (Expire)'; }
-  }
+    const r = await callProxy('POST', API_PATHS.CHECKOUT_EXPIRE, payload);
+    const code = extractCodeFromResponse(r.data);
+    if (!code || code === '0') { txn.status = TxnStatus.FAILED; txn.errorMessage = 'Session expired'; txn.updatedAt = Date.now(); saveTransactions(); renderDetail(); }
+    else { logEvent(`Expire failed: [${code}] ${extractMsgFromResponse(r.data)}`); if (btn) { btn.disabled = false; btn.textContent = 'Close Session'; } }
+  } catch (e) { logEvent(`Failed: ${e.message}`); if (btn) { btn.disabled = false; btn.textContent = 'Close Session'; } }
 }
 
-// --- Execute Refund / Close (for terminal transactions) ---
-async function executeRefund(txn) {
-  if (!txn) return;
-  const cfg = getConfig();
-
-  const btn = document.getElementById('detailRefundBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Processing...'; }
-
-  const payload = {
-    appId: cfg.appId,
-    merchantId: cfg.merchantId,
-    referenceOrderId: uid('ORDER'),
-    transactionRequestId: uid('REQ'),
-    amount: { orderAmount: txn.totalCents, priceCurrency: cfg.currency },
-    originalTransactionId: txn.transactionId || undefined,
-    originalTransactionRequestId: txn.requestId || undefined,
-    reason: 'Customer request',
-    notifyUrl: FIXED_NOTIFY_WEBHOOK_URL,
-    terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL,
-  };
-
-  try {
-    // Use /v1/refund for online, /v1/semi-integration/transaction/refund for semi-integrated
-    const path = '/v1/semi-integration/transaction/refund';
-    const result = await callProxy('POST', path, payload);
-    logEvent(`Refund response: HTTP ${result.httpStatus}`);
-
-    if (result.ok || result.httpStatus === 200) {
-      // Create refund transaction record
-      const refundTxn = {
-        id: payload.transactionRequestId,
-        orderId: payload.referenceOrderId,
-        requestId: payload.transactionRequestId,
-        transactionId: null,
-        type: 'Refund',
-        totalCents: txn.totalCents,
-        amount: payload.amount,
-        status: TxnStatus.PROCESSING,
-        progressMessage: 'Refund processing...',
-        errorMessage: null,
-        events: [],
-        result: {},
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        terminalEnded: false,
-        notifyStatus: null,
-        seenEventKeys: [],
-      };
-      transactions.push(refundTxn);
-      saveTransactions();
-      activeTxn = refundTxn;
-      navigateTo(AppView.PROGRESS);
-      addTimelineItem('Refund request sent');
-    }
-  } catch (err) {
-    logEvent(`Refund failed: ${err.message}`);
-    if (btn) { btn.disabled = false; btn.textContent = 'Refund / Close'; }
-  }
+// --- Void from Detail ---
+async function executeVoidFromDetail(origTxn) {
+  if (!origTxn?.transactionId) { logEvent('Void requires transactionId'); return; }
+  const txn = createTxnRecord(TxnType.VOID); startTxnProgress(txn);
+  const payload = { ...basePayload(), transactionRequestId: txn.requestId, originalTransactionId: origTxn.transactionId, description: 'Void', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, pushToTerminal: true, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+  try { const r = await callProxy('POST', API_PATHS.VOID, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
-// --- Execute Query ---
-async function executeQuery(txn) {
-  if (!txn) return;
-  const cfg = getConfig();
-
-  const queryBtn = document.getElementById('detailQueryBtn') || el.queryTxnBtn;
-  if (queryBtn) { queryBtn.disabled = true; queryBtn.textContent = 'Querying...'; }
-
-  const payload = {
-    appId: cfg.appId,
-    merchantId: cfg.merchantId,
-    transactionRequestId: txn.requestId,
-  };
-
-  try {
-    const result = await callProxy('GET', '/v1/transaction/query', payload);
-    logEvent(`Query response: HTTP ${result.httpStatus}`);
-
-    const status = extractStatusFromResponse(result.data);
-    if (status) {
-      txn.status = status;
-      txn.updatedAt = Date.now();
-      const ids = extractIdsFromResponse(result.data);
-      if (ids.transactionId) txn.transactionId = ids.transactionId;
-      saveTransactions();
-      renderDetail();
-      updateDevConsole();
-    }
-  } catch (err) {
-    logEvent(`Query failed: ${err.message}`);
-  } finally {
-    if (queryBtn) { queryBtn.disabled = false; queryBtn.textContent = queryBtn.id === 'queryTxnBtn' ? 'Manual Query' : 'Query Status'; }
-  }
+// --- Tip Adjust from Detail ---
+async function executeTipAdjustFromDetail(origTxn) {
+  if (!origTxn?.transactionId) { logEvent('Tip Adjust requires transactionId'); return; }
+  const tipAmount = parseInt(prompt('Enter tip amount (cents):', '100')) || 0;
+  if (tipAmount <= 0) return;
+  const txn = createTxnRecord(TxnType.TIP_ADJUST); txn.totalCents = tipAmount; startTxnProgress(txn);
+  const payload = { ...basePayload(), originalTransactionId: origTxn.transactionId, tipAmount, pushToTerminal: true };
+  try { const r = await callProxy('POST', API_PATHS.TIP_ADJUST, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
-// === Response Parsing Helpers ===
-function extractIdsFromResponse(data) {
-  const result = { transactionId: '', transactionRequestId: '', referenceOrderId: '' };
-  if (!data) return result;
-  const nodes = collectPlainObjects(data);
-  for (const node of nodes) {
-    if (!result.transactionId && node.transactionId) result.transactionId = String(node.transactionId);
-    if (!result.transactionRequestId && node.transactionRequestId) result.transactionRequestId = String(node.transactionRequestId);
-    if (!result.referenceOrderId && node.referenceOrderId) result.referenceOrderId = String(node.referenceOrderId);
-  }
-  return result;
+// --- Post Auth (Capture) from Detail ---
+async function executePostAuthFromDetail(origTxn) {
+  if (!origTxn?.transactionId) { logEvent('Post Auth requires transactionId'); return; }
+  const txn = createTxnRecord(TxnType.POST_AUTH); startTxnProgress(txn);
+  const payload = { ...basePayload(), transactionRequestId: txn.requestId, originalTransactionId: origTxn.transactionId, amount: txn.amount, description: 'Post Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, pushToTerminal: true, tipConfig: buildTipConfig(), notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+  try { const r = await callProxy('POST', API_PATHS.POST_AUTH, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
-function extractStatusFromResponse(data) {
-  if (!data) return null;
-  const nodes = collectPlainObjects(data);
-  for (const node of nodes) {
-    const s = node.transactionStatus || node.status;
-    if (s) {
-      const upper = String(s).toUpperCase();
-      if (['S', 'SUCCESS', 'APPROVED', 'COMPLETED'].includes(upper)) return TxnStatus.SUCCESS;
-      if (['F', 'FAILED', 'DECLINED', 'CANCELLED', 'VOIDED', 'ABORTED'].includes(upper)) return TxnStatus.FAILED;
-      if (['P', 'I', 'PROCESSING'].includes(upper)) return TxnStatus.PROCESSING;
-    }
-  }
-  return null;
+// --- Incremental Auth from Detail ---
+async function executeIncrementalAuthFromDetail(origTxn) {
+  if (!origTxn?.transactionId) { logEvent('Incremental Auth requires transactionId'); return; }
+  const addAmountStr = prompt('Enter additional auth amount (cents):', String(origTxn.totalCents || 500));
+  const addAmount = parseInt(addAmountStr) || 0;
+  if (addAmount <= 0) return;
+  const txn = createTxnRecord(TxnType.INCREMENTAL_AUTH); txn.totalCents = addAmount;
+  txn.amount = { orderAmount: addAmount, priceCurrency: getConfig().currency, totalAmount: addAmount };
+  startTxnProgress(txn);
+  const payload = { ...basePayload(), transactionRequestId: txn.requestId, originalTransactionId: origTxn.transactionId, amount: txn.amount, description: 'Incremental Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, pushToTerminal: true, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+  try { const r = await callProxy('POST', API_PATHS.INCREMENTAL_AUTH, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
-function extractCodeFromResponse(data) {
-  if (!data) return '';
-  const nodes = collectPlainObjects(data);
-  for (const node of nodes) {
-    if (node.code !== undefined) return String(node.code);
-  }
-  return '';
-}
-
-function extractMsgFromResponse(data) {
-  if (!data) return '';
-  const nodes = collectPlainObjects(data);
-  for (const node of nodes) {
-    if (node.msg) return String(node.msg);
-    if (node.message) return String(node.message);
-  }
-  return '';
-}
-
-function collectPlainObjects(obj, acc = []) {
-  if (!obj || typeof obj !== 'object') return acc;
-  if (Array.isArray(obj)) { obj.forEach(item => collectPlainObjects(item, acc)); }
-  else { acc.push(obj); Object.values(obj).forEach(v => { if (v && typeof v === 'object') collectPlainObjects(v, acc); }); }
-  return acc;
+// --- Unreferenced Refund (from Checkout, no originalTransactionId) ---
+async function executeUnreferencedRefund() {
+  const txn = createTxnRecord(TxnType.REFUND); startTxnProgress(txn);
+  const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: { orderAmount: txn.amount.orderAmount, priceCurrency: txn.amount.priceCurrency }, description: 'Unreferenced Refund', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, signatureConfig: buildSignatureConfig(), notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+  try { const r = await callProxy('POST', API_PATHS.REFUND, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
 // ============================================================
-// SSE Event Stream & Webhook Handling
+// SSE Event Stream
 // ============================================================
-
 function connectEventStream() {
   if (eventSource && eventSource.readyState !== EventSource.CLOSED) return;
-  const cfg = getConfig();
-  try {
-    eventSource = new EventSource(`${cfg.backendUrl || window.location.origin}/api/events/stream`);
-    eventSource.onopen = () => setEventBadge('connected');
-    eventSource.onerror = () => setEventBadge('error');
-    eventSource.onmessage = (e) => handleEventData(e.data);
-    eventSource.addEventListener('terminal_notify_received', (e) => handleEventData(e.data));
-    eventSource.addEventListener('webhook_received', (e) => handleEventData(e.data));
-    eventSource.addEventListener('api_response', (e) => handleEventData(e.data));
-    setEventBadge('connected');
-  } catch { setEventBadge('error'); }
+  try { eventSource = new EventSource(`${getConfig().backendUrl}/api/events/stream`); eventSource.onopen = () => setEventBadge('connected'); eventSource.onerror = () => setEventBadge('error'); eventSource.onmessage = (e) => handleEventData(e.data); setEventBadge('connected'); } catch { setEventBadge('error'); }
 }
-
-function disconnectEventStream() {
-  if (eventSource) { eventSource.close(); eventSource = null; }
-  setEventBadge('idle');
-  stopRecentEventPolling();
-}
-
-function startRecentEventPolling() {
-  stopRecentEventPolling();
-  recentEventTimer = setInterval(() => replayRecentEvents(), 3000);
-}
-
-function stopRecentEventPolling() {
-  if (recentEventTimer) { clearInterval(recentEventTimer); recentEventTimer = null; }
-}
-
-async function replayRecentEvents() {
-  if (!activeTxn || activeTxn.status === TxnStatus.SUCCESS || activeTxn.status === TxnStatus.FAILED) {
-    stopRecentEventPolling();
-    return;
-  }
-  try {
-    const cfg = getConfig();
-    const resp = await fetch(`${cfg.backendUrl}/api/events/recent`);
-    const data = await resp.json();
-    if (data.items) data.items.forEach(item => handleEventData(JSON.stringify(item)));
-  } catch { /* ignore */ }
-}
+function disconnectEventStream() { if (eventSource) { eventSource.close(); eventSource = null; } setEventBadge('idle'); stopRecentEventPolling(); }
+function startRecentEventPolling() { stopRecentEventPolling(); recentEventTimer = setInterval(() => replayRecentEvents(), 3000); }
+function stopRecentEventPolling() { if (recentEventTimer) { clearInterval(recentEventTimer); recentEventTimer = null; } }
+async function replayRecentEvents() { if (!activeTxn || activeTxn.status === TxnStatus.SUCCESS || activeTxn.status === TxnStatus.FAILED) { stopRecentEventPolling(); return; } try { const r = await fetch(`${getConfig().backendUrl}/api/events/recent`); const d = await r.json(); if (d.items) d.items.forEach(i => handleEventData(JSON.stringify(i))); } catch {} }
 
 function handleEventData(raw) {
-  let parsed;
-  try { parsed = JSON.parse(raw); } catch { return; }
-  if (!parsed || !parsed.type) return;
-  if (!activeTxn) return;
-
-  // Dedup
-  const eventKey = `${parsed.type}:${parsed.ts}`;
-  if (activeTxn.seenEventKeys.includes(eventKey)) return;
-  activeTxn.seenEventKeys.push(eventKey);
+  let parsed; try { parsed = JSON.parse(raw); } catch { return; }
+  if (!parsed?.type || !activeTxn) return;
+  const key = `${parsed.type}:${parsed.ts}`;
+  if (activeTxn.seenEventKeys.includes(key)) return;
+  activeTxn.seenEventKeys.push(key);
   if (activeTxn.seenEventKeys.length > 500) activeTxn.seenEventKeys = activeTxn.seenEventKeys.slice(-200);
-
-  if (parsed.type === 'terminal_notify_received') {
-    handleTerminalEvent(parsed);
-  } else if (parsed.type === 'webhook_received') {
-    handleWebhookEvent(parsed);
-  }
+  if (parsed.type === 'terminal_notify_received') handleTerminalEvent(parsed);
+  else if (parsed.type === 'webhook_received') handleWebhookEvent(parsed);
 }
 
 function handleTerminalEvent(parsed) {
   const body = parsed?.payload?.payload || {};
   const snap = extractTerminalSnapshot(body);
-  const eventType = snap.eventType || '';
-
-  // Match by IDs
   if (!matchesActiveTxn(snap.transactionRequestId, snap.referenceOrderId, snap.transactionId)) return;
-
   if (snap.transactionId && activeTxn) activeTxn.transactionId = snap.transactionId;
-
-  if (eventType) {
-    const desc = terminalEventDescription(eventType);
-    if (currentView === AppView.PROGRESS) {
-      addTimelineItem(`Terminal: ${eventType}${desc ? ' - ' + desc : ''}`);
-      if (el.progressSubtitle) el.progressSubtitle.textContent = desc || eventType;
-    }
-    logEvent(`[terminal] ${eventType}`);
-  }
-
-  if (eventType === 'TRANSACTION_ENDED') {
-    activeTxn.terminalEnded = true;
-    if (currentView === AppView.PROGRESS) addTimelineItem('Terminal ended. Waiting for final result...');
-    checkFinalState();
-  }
-
+  if (snap.eventType) { const desc = terminalEventDesc(snap.eventType); logEvent(`[terminal] ${snap.eventType}${desc ? ' - ' + desc : ''}`); if (el.progressSubtitle) el.progressSubtitle.textContent = desc || snap.eventType; }
+  if (snap.eventType === 'TRANSACTION_ENDED') { activeTxn.terminalEnded = true; logEvent('Terminal ended, waiting for webhook...'); checkFinalState(); }
   updateDevConsole();
 }
 
 function handleWebhookEvent(parsed) {
   const body = parsed?.payload?.payload || {};
-  if (body && body.test === true) return; // Ignore test webhooks
-
+  if (body?.test === true) return;
   const snap = extractWebhookSnapshot(body);
   if (!matchesActiveTxn(snap.transactionRequestId, snap.referenceOrderId, snap.transactionId)) return;
-
   if (snap.transactionId && activeTxn) activeTxn.transactionId = snap.transactionId;
-  if (snap.referenceOrderId && activeTxn) activeTxn.orderId = snap.referenceOrderId;
-
   if (!snap.transactionStatus) return;
-
-  const normalizedStatus = normalizeStatus(snap.transactionStatus);
-  activeTxn.notifyStatus = normalizedStatus;
-
-  if (currentView === AppView.PROGRESS) {
-    addTimelineItem(`Webhook: status=${snap.transactionStatus} (${normalizedStatus})`);
-  }
+  activeTxn.notifyStatus = normalizeStatus(snap.transactionStatus);
   logEvent(`[webhook] status=${snap.transactionStatus}`);
-
   checkFinalState();
 }
 
@@ -1150,235 +654,91 @@ function checkFinalState() {
   if (!activeTxn) return;
   const status = activeTxn.notifyStatus;
   if (!status) return;
-
-  // Dual-callback confirmation: both terminalEnded AND notifyStatus must be satisfied
-  // terminalEventNotifyUrl must have received TRANSACTION_ENDED
-  // AND notifyUrl (webhook) must have received a final transactionStatus
-  if (!activeTxn.terminalEnded) {
-    logEvent(`[checkFinal] notifyStatus=${status} but terminalEnded=false, waiting for TRANSACTION_ENDED...`);
-    return;
-  }
-
-  // Both conditions met - confirm final state
+  if (!activeTxn.terminalEnded) { logEvent(`[checkFinal] status=${status} but waiting for TRANSACTION_ENDED`); return; }
   if (status === TxnStatus.SUCCESS || status === TxnStatus.FAILED) {
-    activeTxn.status = status;
-    activeTxn.updatedAt = Date.now();
-    saveTransactions();
-    stopRecentEventPolling();
-    renderProgress();
-    updateDevConsole();
+    activeTxn.status = status; activeTxn.updatedAt = Date.now(); saveTransactions(); stopRecentEventPolling(); renderProgress(); updateDevConsole();
   }
 }
 
-function matchesActiveTxn(requestId, referenceOrderId, transactionId) {
+function matchesActiveTxn(reqId, refId, txnId) {
   if (!activeTxn) return false;
-  if (activeTxn.requestId && requestId && requestId === activeTxn.requestId) return true;
-  if (activeTxn.orderId && referenceOrderId && referenceOrderId === activeTxn.orderId) return true;
-  if (activeTxn.transactionId && transactionId && transactionId === activeTxn.transactionId) return true;
-  // If no IDs to compare, don't match
-  if (!requestId && !referenceOrderId && !transactionId) return false;
+  if (activeTxn.requestId && reqId && reqId === activeTxn.requestId) return true;
+  if (activeTxn.orderId && refId && refId === activeTxn.orderId) return true;
+  if (activeTxn.transactionId && txnId && txnId === activeTxn.transactionId) return true;
   return false;
 }
 
-function normalizeStatus(raw) {
-  const s = String(raw).toUpperCase();
-  if (['S', 'SUCCESS', 'APPROVED', 'COMPLETED'].includes(s)) return TxnStatus.SUCCESS;
-  if (['F', 'FAILED', 'DECLINED', 'CANCELLED', 'VOIDED', 'ABORTED', 'C'].includes(s)) return TxnStatus.FAILED;
-  return TxnStatus.PROCESSING;
-}
+function normalizeStatus(raw) { const s = String(raw).toUpperCase(); if (['S','SUCCESS','APPROVED','COMPLETED'].includes(s)) return TxnStatus.SUCCESS; if (['F','FAILED','DECLINED','CANCELLED','VOIDED','ABORTED','C'].includes(s)) return TxnStatus.FAILED; return TxnStatus.PROCESSING; }
+function terminalEventDesc(et) { return { 'ORDER_RECEIVED': 'Cloud connected', 'PAYMENT_PRESENTED': 'Waiting for card', 'PIN_ENTERING': 'PIN entry', 'PAYMENT_PROCESSING': 'Processing', 'SIGNATURE_CAPTURED': 'Signature captured', 'PRINTING': 'Printing', 'PRINT_COMPLETED': 'Printed', 'TRANSACTION_ENDED': 'Ended' }[String(et).toUpperCase()] || ''; }
 
-function terminalEventDescription(eventType) {
-  const map = {
-    'ORDER_RECEIVED': 'Cloud connected',
-    'PAYMENT_PRESENTED': 'Waiting for card tap/insert',
-    'PIN_ENTERING': 'Waiting for PIN entry',
-    'PAYMENT_PROCESSING': 'Processing payment',
-    'SIGNATURE_CAPTURED': 'Signature captured',
-    'PRINTING': 'Printing receipt',
-    'PRINT_COMPLETED': 'Receipt printed',
-    'TRANSACTION_ENDED': 'Transaction ended',
-  };
-  return map[String(eventType).toUpperCase()] || '';
-}
+// === Response Helpers ===
+function extractIdsFromResponse(data) { const r = { transactionId: '', transactionRequestId: '', referenceOrderId: '' }; if (!data) return r; for (const n of collectPlainObjects(data)) { if (!r.transactionId && n.transactionId) r.transactionId = String(n.transactionId); if (!r.transactionRequestId && n.transactionRequestId) r.transactionRequestId = String(n.transactionRequestId); if (!r.referenceOrderId && n.referenceOrderId) r.referenceOrderId = String(n.referenceOrderId); } return r; }
+function extractStatusFromResponse(data) { if (!data) return null; for (const n of collectPlainObjects(data)) { const s = n.transactionStatus || n.status; if (s) { const u = String(s).toUpperCase(); if (['S','SUCCESS','APPROVED','COMPLETED'].includes(u)) return TxnStatus.SUCCESS; if (['F','FAILED','DECLINED','CANCELLED','VOIDED','ABORTED'].includes(u)) return TxnStatus.FAILED; if (['P','I','PROCESSING'].includes(u)) return TxnStatus.PROCESSING; } } return null; }
+function extractCodeFromResponse(data) { if (!data) return ''; for (const n of collectPlainObjects(data)) { if (n.code !== undefined) return String(n.code); } return ''; }
+function extractMsgFromResponse(data) { if (!data) return ''; for (const n of collectPlainObjects(data)) { if (n.msg) return String(n.msg); if (n.message) return String(n.message); } return ''; }
+function extractTerminalSnapshot(body) { let eventType='', transactionId='', transactionRequestId='', referenceOrderId=''; for (const n of collectPlainObjects(body)) { if (!eventType && n.eventType) eventType = String(n.eventType).toUpperCase(); if (!transactionId && n.transactionId) transactionId = String(n.transactionId); if (!transactionRequestId && n.transactionRequestId) transactionRequestId = String(n.transactionRequestId); if (!referenceOrderId && n.referenceOrderId) referenceOrderId = String(n.referenceOrderId); } return { eventType, transactionId, transactionRequestId, referenceOrderId }; }
+function extractWebhookSnapshot(body) { let transactionId='', transactionRequestId='', referenceOrderId='', transactionStatus=''; for (const n of collectPlainObjects(body)) { if (!transactionId && n.transactionId) transactionId = String(n.transactionId); if (!transactionRequestId && n.transactionRequestId) transactionRequestId = String(n.transactionRequestId); if (!referenceOrderId && n.referenceOrderId) referenceOrderId = String(n.referenceOrderId); if (!transactionStatus && n.transactionStatus) transactionStatus = String(n.transactionStatus).toUpperCase(); } return { transactionId, transactionRequestId, referenceOrderId, transactionStatus }; }
+function collectPlainObjects(obj, acc = []) { if (!obj || typeof obj !== 'object') return acc; if (Array.isArray(obj)) obj.forEach(i => collectPlainObjects(i, acc)); else { acc.push(obj); Object.values(obj).forEach(v => { if (v && typeof v === 'object') collectPlainObjects(v, acc); }); } return acc; }
 
-function extractTerminalSnapshot(body) {
-  const nodes = collectPlainObjects(body);
-  let eventType = '', transactionId = '', transactionRequestId = '', referenceOrderId = '';
-  for (const node of nodes) {
-    if (!eventType && node.eventType) eventType = String(node.eventType).toUpperCase();
-    if (!transactionId && node.transactionId) transactionId = String(node.transactionId);
-    if (!transactionRequestId && node.transactionRequestId) transactionRequestId = String(node.transactionRequestId);
-    if (!referenceOrderId && node.referenceOrderId) referenceOrderId = String(node.referenceOrderId);
-  }
-  return { eventType, transactionId, transactionRequestId, referenceOrderId };
-}
+// === Dev Console ===
+function setEventBadge(state) { if (!el.eventBadge) return; el.eventBadge.className = `dev-badge ${state}`; el.eventBadge.textContent = { idle: 'Disconnected', connected: 'Connected', error: 'Error' }[state] || 'Disconnected'; }
+function logEvent(text) { if (!el.eventLog) return; const i = document.createElement('div'); i.className = 'event-item'; i.innerHTML = `<div class="event-time">${formatTime(Date.now())}</div><div class="event-text">${text}</div>`; el.eventLog.prepend(i); }
+function updateDevConsole() { if (!activeTxn) return; if (el.txnRef) el.txnRef.textContent = activeTxn.orderId || '-'; if (el.txnReq) el.txnReq.textContent = activeTxn.requestId || '-'; if (el.txnState) el.txnState.textContent = activeTxn.status || 'Idle'; }
 
-function extractWebhookSnapshot(body) {
-  const nodes = collectPlainObjects(body);
-  let transactionId = '', transactionRequestId = '', referenceOrderId = '', transactionStatus = '';
-  for (const node of nodes) {
-    if (!transactionId && node.transactionId) transactionId = String(node.transactionId);
-    if (!transactionRequestId && node.transactionRequestId) transactionRequestId = String(node.transactionRequestId);
-    if (!referenceOrderId && node.referenceOrderId) referenceOrderId = String(node.referenceOrderId);
-    if (!transactionStatus && node.transactionStatus) transactionStatus = String(node.transactionStatus).toUpperCase();
-  }
-  return { transactionId, transactionRequestId, referenceOrderId, transactionStatus };
-}
+// === Modal ===
+function openModal(m) { if (m) m.classList.remove('hidden'); }
+function closeModal(m) { if (m) m.classList.add('hidden'); }
 
 // ============================================================
-// Developer Console
+// Event Binding & Bootstrap
 // ============================================================
-
-function setEventBadge(state) {
-  if (!el.eventBadge) return;
-  const textMap = { idle: 'Disconnected', connected: 'Connected', error: 'Error' };
-  el.eventBadge.className = `dev-badge ${state}`;
-  el.eventBadge.textContent = textMap[state] || 'Disconnected';
-}
-
-function logEvent(text) {
-  if (!el.eventLog) return;
-  const item = document.createElement('div');
-  item.className = 'event-item';
-  item.innerHTML = `<div class="event-time">${formatTime(Date.now())}</div><div class="event-text">${text}</div>`;
-  el.eventLog.prepend(item);
-}
-
-function updateDevConsole() {
-  if (!activeTxn) return;
-  if (el.txnRef) el.txnRef.textContent = activeTxn.orderId || '-';
-  if (el.txnReq) el.txnReq.textContent = activeTxn.requestId || '-';
-  if (el.txnState) el.txnState.textContent = activeTxn.status || 'Idle';
-}
-
-// ============================================================
-// Event Binding
-// ============================================================
-
 function bindEvents() {
-  // Menu product clicks
-  el.menuGrid?.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-op]');
-    if (!btn) return;
-    const pid = btn.dataset.id;
-    if (btn.dataset.op === 'add') cart[pid] = (cart[pid] || 0) + 1;
-    if (btn.dataset.op === 'sub') { cart[pid] = Math.max(0, (cart[pid] || 0) - 1); if (cart[pid] === 0) delete cart[pid]; }
-    renderMenu();
-  });
-
-  // Go to checkout
+  el.menuGrid?.addEventListener('click', (e) => { const b = e.target.closest('button[data-op]'); if (!b) return; const pid = b.dataset.id; if (b.dataset.op === 'add') cart[pid] = (cart[pid] || 0) + 1; if (b.dataset.op === 'sub') { cart[pid] = Math.max(0, (cart[pid] || 0) - 1); if (!cart[pid]) delete cart[pid]; } renderMenu(); });
   el.goToCheckoutBtn?.addEventListener('click', () => navigateTo(AppView.CHECKOUT));
-
-  // Payment channel radio selection
-  document.querySelectorAll('input[name="payChannel"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      document.querySelectorAll('.payment-option').forEach(opt => opt.classList.remove('active'));
-      radio.closest('.payment-option')?.classList.add('active');
-    });
-  });
-
-  // Back to menu
   el.backToMenuBtn?.addEventListener('click', () => navigateTo(AppView.MENU));
-
-  // Pay button - dispatch based on selected channel
+  // Transaction type select
+  el.txnTypeSelect?.addEventListener('change', () => { selectedTxnType = el.txnTypeSelect.value; renderCheckout(); });
+  // Additional amounts auto-update
+  ['tipAmountInput', 'taxAmountInput', 'surchargeInput', 'cashbackInput'].forEach(id => { document.getElementById(id)?.addEventListener('input', () => renderCheckout()); });
+  // Payment channel radio
+  document.querySelectorAll('input[name="payChannel"]').forEach(r => { r.addEventListener('change', () => { document.querySelectorAll('.payment-option').forEach(o => o.classList.remove('active')); r.closest('.payment-option')?.classList.add('active'); }); });
+  // Pay button - dispatch based on selected type and channel
   el.payBtn?.addEventListener('click', () => {
-    const channel = getSelectedChannel();
-    if (channel === 'online') executeOnlineCheckout();
-    else executeSale();
+    const channel = document.querySelector('input[name="payChannel"]:checked')?.value || 'terminal';
+    if (channel === 'online') { executeOnlineCheckout(); return; }
+    switch (selectedTxnType) {
+      case TxnType.SALE: executeSale(); break;
+      case TxnType.AUTH: executeAuth(); break;
+      case TxnType.FORCED_AUTH: executeForcedAuth(); break;
+      case TxnType.REFUND: executeUnreferencedRefund(); break;
+      default: executeSale();
+    }
   });
-
-  // Abort button
   el.abortBtn?.addEventListener('click', () => executeAbort());
-
-  // History button (header)
   el.historyBtn?.addEventListener('click', () => navigateTo(AppView.HISTORY));
-
-  // History back button
   el.historyBackBtn?.addEventListener('click', () => navigateTo(AppView.MENU));
-
-  // History filter chips
-  el.historyFilters?.addEventListener('click', (e) => {
-    const chip = e.target.closest('.filter-chip');
-    if (!chip) return;
-    historyFilter = chip.dataset.filter;
-    el.historyFilters.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-    chip.classList.add('active');
-    renderHistory();
-  });
-
-  // History card clicks
-  el.historyList?.addEventListener('click', (e) => {
-    const card = e.target.closest('.history-card');
-    if (!card) return;
-    navigateTo(AppView.DETAIL, { txnId: card.dataset.txnId });
-  });
-
-  // Dev Console toggle
+  document.getElementById('batchCloseBtn')?.addEventListener('click', () => executeBatchClose());
+  el.historyFilters?.addEventListener('click', (e) => { const c = e.target.closest('.filter-chip'); if (!c) return; historyFilter = c.dataset.filter; el.historyFilters.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active')); c.classList.add('active'); renderHistory(); });
+  el.historyList?.addEventListener('click', (e) => { const c = e.target.closest('.history-card'); if (c) navigateTo(AppView.DETAIL, { txnId: c.dataset.txnId }); });
   el.openDevConsoleBtn?.addEventListener('click', () => el.devConsole?.classList.add('visible'));
   el.closeDevConsoleBtn?.addEventListener('click', () => el.devConsole?.classList.remove('visible'));
-
-  // Dev console actions
-  el.subBtn?.addEventListener('click', () => connectEventStream());
-  el.unsubBtn?.addEventListener('click', () => disconnectEventStream());
+  el.subBtn?.addEventListener('click', connectEventStream);
+  el.unsubBtn?.addEventListener('click', disconnectEventStream);
   el.clearEventsBtn?.addEventListener('click', () => { if (el.eventLog) el.eventLog.innerHTML = ''; });
-  el.queryTxnBtn?.addEventListener('click', () => { if (activeTxn) executeQuery(activeTxn); });
-
-  // Config modal
+  el.queryTxnBtn?.addEventListener('click', () => { if (activeTxn) runQuery(activeTxn.requestId); });
   el.openConfigModalBtn?.addEventListener('click', () => openModal(el.configModal));
-  el.configModal?.addEventListener('click', (e) => {
-    if (e.target.closest('[data-modal-close]')) closeModal(el.configModal);
-  });
-
-  // Config inputs save on change
-  ['backendUrl', 'envType', 'customBaseUrl', 'apiKey', 'appId', 'merchantId', 'terminalSn', 'currency', 'returnUrl'].forEach(id => {
-    const node = el[id];
-    if (!node) return;
-    node.addEventListener('input', saveConfig);
-    node.addEventListener('change', saveConfig);
-  });
-
-  // Settings toggles (tip, tax, print, signature)
-  ['tipEnabled', 'tipSuggestionsEnabled', 'taxEnabled', 'signatureEnabled'].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', () => { toggleSubSettings(); saveSettings(); });
-  });
-  ['tipMode', 'tipOnScreenTip', 'tipWithTax', 'tipFeeMode', 'tipSuggestion1', 'tipSuggestion2', 'tipSuggestion3',
-   'taxRate', 'printReceipt', 'signatureMode', 'signatureThresholdEnabled', 'signatureThreshold'].forEach(id => {
-    const node = document.getElementById(id);
-    if (!node) return;
-    node.addEventListener('change', saveSettings);
-    node.addEventListener('input', saveSettings);
-  });
-
-  // ESC to close modal
+  el.configModal?.addEventListener('click', (e) => { if (e.target.closest('[data-modal-close]')) closeModal(el.configModal); });
+  ['backendUrl','envType','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(id => { const n = el[id]; if (n) { n.addEventListener('input', saveConfig); n.addEventListener('change', saveConfig); } });
+  ['tipEnabled','tipSuggestionsEnabled','taxEnabled','signatureEnabled'].forEach(id => { document.getElementById(id)?.addEventListener('change', () => { toggleSubSettings(); saveSettings(); }); });
+  ['tipMode','tipOnScreenTip','tipWithTax','tipFeeMode','tipSuggestion1','tipSuggestion2','tipSuggestion3','taxRate','printReceipt','signatureMode','signatureThresholdEnabled','signatureThreshold'].forEach(id => { const n = document.getElementById(id); if (n) { n.addEventListener('change', saveSettings); n.addEventListener('input', saveSettings); } });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(el.configModal); });
 }
 
-// === Modal Helpers ===
-function openModal(modal) { if (modal) modal.classList.remove('hidden'); }
-function closeModal(modal) { if (modal) modal.classList.add('hidden'); }
-
-// ============================================================
-// Bootstrap
-// ============================================================
-
 function bootstrap() {
-  initElements();
-  loadConfig();
-  loadTransactions();
-  loadSettings();
-
-  // Set default backend URL
+  initElements(); loadConfig(); loadTransactions(); loadSettings();
   const defaultBackend = getDefaultBackendUrl();
-  if (el.backendUrl && el.backendUrl.value === 'http://127.0.0.1:8000' && defaultBackend !== 'http://127.0.0.1:8000') {
-    el.backendUrl.value = defaultBackend;
-    saveConfig();
-  }
-
-  bindEvents();
-  navigateTo(AppView.MENU);
-  setEventBadge('idle');
-  connectEventStream();
-  logEvent('☀️ SUNBAY Cloud Demo ready.');
+  if (el.backendUrl) { const cur = el.backendUrl.value; const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'; if (!cur || (isDeployed && cur.includes(':8000'))) { el.backendUrl.value = defaultBackend; saveConfig(); } }
+  bindEvents(); navigateTo(AppView.MENU); setEventBadge('idle'); connectEventStream(); logEvent('☀️ SUNBAY Cloud Demo ready.');
 }
 
 bootstrap();

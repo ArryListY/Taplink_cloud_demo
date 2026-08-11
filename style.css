@@ -90,13 +90,23 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .pay-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Payment Method Selection */
-.payment-method-section { margin-bottom: 24px; }
-.payment-method-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-muted); }
+.payment-method-section { margin-bottom: 20px; }
+.payment-method-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); }
 .payment-options { display: grid; gap: 8px; }
-.payment-option { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 500; }
+.payment-option { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 500; }
 .payment-option:hover { border-color: var(--primary); background: var(--primary-transparent); }
 .payment-option.active { border-color: var(--primary); background: var(--primary-transparent); }
 .payment-option input[type="radio"] { width: auto; margin: 0; accent-color: var(--primary); transform: scale(1.1); }
+.txn-type-select { width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-weight: 500; background: #fff; cursor: pointer; }
+.txn-type-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-transparent); }
+.additional-amounts { margin-bottom: 8px; }
+.additional-amounts h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
+.additional-amounts .field-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+.additional-amounts input { padding: 10px 12px; font-size: 13px; }
+.secondary-fields { margin: 16px 0; }
+.secondary-fields h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
+.secondary-fields .field-grid { gap: 10px; }
+.secondary-fields input { padding: 10px 12px; font-size: 13px; }
 
 /* === Progress View === */
 .progress-container { max-width: 480px; margin: 0 auto; text-align: center; padding-top: 20px; }
@@ -154,6 +164,8 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .filter-chip:hover { border-color: var(--primary); color: var(--primary); }
 .filter-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
 .history-list { display: grid; gap: 12px; }
+.history-actions { margin-bottom: 16px; }
+.history-actions .ghost-btn { width: auto; padding: 10px 20px; font-size: 14px; }
 .history-card { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s; gap: 12px; }
 .history-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); transform: translateY(-1px); }
 .history-card-status { width: 4px; height: 40px; border-radius: 4px; flex-shrink: 0; }

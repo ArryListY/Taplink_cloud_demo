@@ -49,19 +49,36 @@
         <h2>Order Summary</h2>
         <div id="checkoutCartList" class="cart-list"></div>
         <div class="divider"></div>
-        <div class="summary-line">
-          <span>Subtotal</span>
-          <span id="checkoutSubtotal">$0.00</span>
-        </div>
-        <div class="summary-line">
-          <span id="checkoutTaxLabel">Tax (8%)</span>
-          <span id="checkoutTax">$0.00</span>
-        </div>
+        <div class="summary-line"><span>Subtotal</span><span id="checkoutSubtotal">$0.00</span></div>
+        <div class="summary-line"><span id="checkoutTaxLabel">Tax</span><span id="checkoutTax">$0.00</span></div>
         <div class="divider"></div>
-        <div class="summary-line total-line">
-          <span>Total</span>
-          <span id="checkoutTotal">$0.00</span>
+        <div class="summary-line total-line"><span>Total</span><span id="checkoutTotal">$0.00</span></div>
+
+        <!-- Additional Amounts -->
+        <div class="additional-amounts" id="additionalAmounts">
+          <h3>Additional Amounts (cents)</h3>
+          <div class="field-grid">
+            <label>Tip<input id="tipAmountInput" type="number" value="0" min="0" /></label>
+            <label>Tax<input id="taxAmountInput" type="number" value="0" min="0" /></label>
+            <label>Surcharge<input id="surchargeInput" type="number" value="0" min="0" /></label>
+            <label>Cashback<input id="cashbackInput" type="number" value="0" min="0" /></label>
+          </div>
         </div>
+
+        <div class="divider"></div>
+
+        <!-- Transaction Type (only new transactions) -->
+        <div class="payment-method-section">
+          <h3>Transaction Type</h3>
+          <select id="txnTypeSelect" class="txn-type-select">
+            <option value="Sale">Sale</option>
+            <option value="Auth">Auth</option>
+            <option value="Forced Auth">Forced Auth</option>
+            <option value="Refund">Unreferenced Refund</option>
+          </select>
+        </div>
+
+        <!-- Payment Channel -->
         <div class="payment-method-section">
           <h3>Payment Channel</h3>
           <div class="payment-options">
@@ -75,7 +92,7 @@
             </label>
           </div>
         </div>
-        <button id="payBtn" class="pay-button" type="button" disabled>Pay <span id="payBtnAmount">$0.00</span></button>
+        <button id="payBtn" class="pay-button" type="button" disabled>Execute <span id="payBtnAmount">$0.00</span></button>
       </section>
     </div>
   </main>
@@ -128,6 +145,9 @@
       <button class="filter-chip" data-filter="SUCCESS">Success</button>
       <button class="filter-chip" data-filter="FAILED">Failed</button>
       <button class="filter-chip" data-filter="PROCESSING">Processing</button>
+    </div>
+    <div class="history-actions">
+      <button id="batchCloseBtn" class="ghost-btn" type="button">🗂️ Batch Close</button>
     </div>
     <div class="history-list" id="historyList">
       <div class="empty-state" id="historyEmpty">
