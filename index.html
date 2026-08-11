@@ -11,219 +11,177 @@
   <header class="store-header">
     <div class="header-inner">
       <div class="logo">
-         <span class="logo-icon">☀️</span> SUNBAY COFFEE
+        <span class="logo-icon">☀️</span> SUNBAY COFFEE
       </div>
-      <button id="openDevConsoleBtn" class="dev-btn" title="Developer Console">&lt;/&gt;</button>
+      <div class="header-actions">
+        <button id="historyBtn" class="header-btn" title="Transaction History">📋</button>
+        <button id="openDevConsoleBtn" class="header-btn dev-btn" title="Developer Console">&lt;/&gt;</button>
+      </div>
     </div>
   </header>
 
   <!-- View 1: Menu Selection -->
-  <main id="menuView" class="store-layout">
+  <main id="menuView" class="store-layout view">
     <div class="hero-banner">
       <h1>Order Ahead</h1>
       <p>Freshly brewed and ready for pickup.</p>
     </div>
-    
     <h2 class="section-title">Menu</h2>
     <div class="menu-grid" id="menuGrid"></div>
   </main>
 
   <!-- Floating Cart -->
   <div id="floatingCart" class="floating-cart hidden">
-     <div class="floating-cart-inner">
-        <div class="cart-info">
-           <span id="cartCountBadge" class="cart-badge">0</span>
-           <span class="cart-label">Items selected</span>
-        </div>
-        <button id="goToCheckoutBtn" class="pay-button">View Cart - <span id="cartTotalFloat">$0.00</span></button>
-     </div>
+    <div class="floating-cart-inner">
+      <div class="cart-info">
+        <span id="cartCountBadge" class="cart-badge">0</span>
+        <span class="cart-label">Items selected</span>
+      </div>
+      <button id="goToCheckoutBtn" class="pay-button" type="button">View Cart - <span id="cartTotalFloat">$0.00</span></button>
+    </div>
   </div>
 
   <!-- View 2: Checkout -->
-  <main id="checkoutView" class="store-layout hidden">
-    <button id="backToMenuBtn" class="back-btn">&#8592; Back to Menu</button>
-    
-    <div class="checkout-grid">
-      <!-- Left Column: Customer Information -->
-      <section class="checkout-left">
-        <h2>Checkout</h2>
-        <div class="info-section">
-          <h3>Customer Information</h3>
-          <div class="field-list">
-            <input type="email" placeholder="Email address" value="customer@example.com" />
+  <main id="checkoutView" class="store-layout view hidden">
+    <button id="backToMenuBtn" class="back-btn" type="button">← Back to Menu</button>
+    <div class="checkout-content">
+      <section class="order-summary-card">
+        <h2>Order Summary</h2>
+        <div id="checkoutCartList" class="cart-list"></div>
+        <div class="divider"></div>
+        <div class="summary-line">
+          <span>Subtotal</span>
+          <span id="checkoutSubtotal">$0.00</span>
+        </div>
+        <div class="summary-line">
+          <span>Tax (8%)</span>
+          <span id="checkoutTax">$0.00</span>
+        </div>
+        <div class="divider"></div>
+        <div class="summary-line total-line">
+          <span>Total</span>
+          <span id="checkoutTotal">$0.00</span>
+        </div>
+        <div class="payment-method-section">
+          <h3>Payment Channel</h3>
+          <div class="payment-options">
+            <label class="payment-option active" data-channel="terminal">
+              <input type="radio" name="payChannel" value="terminal" checked />
+              <span>🔌 Terminal (Semi-Integration)</span>
+            </label>
+            <label class="payment-option" data-channel="online">
+              <input type="radio" name="payChannel" value="online" />
+              <span>🌐 Online (Checkout Session)</span>
+            </label>
           </div>
         </div>
-        
-        <div class="info-section">
-          <h3>Billing Address</h3>
-          <div class="field-list">
-            <div class="field-row">
-                <input type="text" placeholder="First Name" value="John" />
-                <input type="text" placeholder="Last Name" value="Doe" />
-            </div>
-            <select><option>United States</option></select>
-            <input type="text" placeholder="Address" value="123 Coffee St" />
-            <div class="field-row">
-                <input type="text" placeholder="City" value="Seattle" />
-                <input type="text" placeholder="State" value="WA" />
-                <input type="text" placeholder="ZIP Code" value="98101" />
-            </div>
-          </div>
-        </div>
-
-        <div class="info-section">
-            <h3>Payment Method</h3>
-            <div class="payment-selection">
-                <div class="payment-option border-active">
-                    <label>
-                        <input type="radio" checked disabled />
-                        <span>Pay via SUNBAY Terminal</span>
-                    </label>
-                </div>
-            </div>
-        </div>
-      </section>
-
-      <!-- Right Column: Order Summary -->
-      <section class="checkout-right">
-        <div class="order-summary card">
-          <h3>Order Summary</h3>
-          <!-- The Cart Items go here -->
-          <div id="cartList" class="cart-list"></div>
-          
-          <div class="divider"></div>
-          
-          <div class="summary-line">
-            <span>Subtotal</span>
-            <span id="orderAmountText">$0.00</span>
-          </div>
-          <div class="summary-line">
-            <span>Tax (Estimated 8%)</span>
-            <span id="taxAmountText">$0.00</span>
-          </div>
-          
-          <div class="divider"></div>
-          
-          <div class="summary-line total-line">
-            <span>Total</span>
-            <span id="totalAmountText">$0.00</span>
-          </div>
-          
-          <button id="runBtn" class="pay-button" type="button" disabled>Pay <span id="payBtnAmount">$0.00</span></button>
-          
-          <!-- Hidden auth button to keep logic valid -->
-          <button id="runAuthBtn" style="display:none;" type="button">Auth</button>
-        </div>
+        <button id="payBtn" class="pay-button" type="button" disabled>Pay <span id="payBtnAmount">$0.00</span></button>
       </section>
     </div>
   </main>
 
-  <!-- Payment Processing & Success Modal -->
-  <div id="statusModal" class="modal hidden" aria-hidden="true">
-    <button class="modal-backdrop" data-modal-close type="button"></button>
-    <section class="modal-card payment-modal" role="dialog" aria-modal="true">
-      
-      <div id="loadingLifecycle" class="lifecycle">
-        <div class="loader-spinner"></div>
-        <div class="lifecycle-step active" id="currentEventStep">
-           <h2 class="step-title" id="currentEventTitle">Processing Payment</h2>
-           <p class="step-sub" id="currentEventSub">Connecting payment terminal...</p>
-        </div>
-        <p class="instruction-text">Please complete payment on the device.</p>
+  <!-- View 3: Transaction Progress -->
+  <main id="progressView" class="store-layout view hidden">
+    <div class="progress-container">
+      <div class="progress-header">
+        <span class="progress-type" id="progressType">Sale</span>
+        <span class="progress-amount" id="progressAmount">$0.00</span>
       </div>
       
-      <div id="successView" style="display:none;" class="success-view">
-         <div class="success-icon">&#10003;</div>
-         <h2>Payment Successful</h2>
-         <p>Order #<span id="modalRef">-</span></p>
-         <div class="success-amount" id="successAmountText">$0.00</div>
-         
-         <div class="success-actions">
-           <button class="ghost-btn" data-modal-close>View Receipt</button>
-           <button class="primary-btn" data-modal-close onclick="location.reload()">Continue Shopping</button>
-         </div>
+      <div class="progress-animation">
+        <div class="progress-spinner"></div>
+        <h2 id="progressTitle">Processing Payment</h2>
+        <p id="progressSubtitle" class="text-muted">Connecting to payment terminal...</p>
       </div>
-      
-      <div id="errorView" style="display:none;" class="error-view">
-         <div class="error-icon">&#10005;</div>
-         <h2>Payment Failed</h2>
-         <p id="errorMsgText">Transaction declined or cancelled.</p>
-         <button class="primary-btn" data-modal-close>Try Again</button>
+
+      <div class="progress-timeline" id="progressTimeline"></div>
+
+      <div class="progress-actions">
+        <button id="abortBtn" class="abort-btn" type="button">Abort Transaction</button>
       </div>
-      
-      <button id="closeStatusModal" class="hidden-btn" data-modal-close type="button">×</button>
-      <!-- Needed for internal references -->
-      <span id="statusModalTitle" style="display:none;"></span>
-      <span id="modalReq" style="display:none;"></span>
-      <span id="modalState" style="display:none;"></span>
-      <span id="modalTerminalEvent" style="display:none;"></span>
-      <span id="modalNotifyStatus" style="display:none;"></span>
-      <div id="modalTimeline" style="display:none;"></div>
-      <button id="modalQueryTxnBtn" style="display:none;"></button>
-    </section>
-  </div>
+    </div>
+  </main>
+
+  <!-- View 4: Transaction Detail -->
+  <main id="detailView" class="store-layout view hidden">
+    <div class="detail-container">
+      <div class="detail-result" id="detailResult">
+        <!-- Success or failure icon injected by JS -->
+      </div>
+
+      <div class="detail-fields" id="detailFields">
+        <!-- Transaction detail fields injected by JS -->
+      </div>
+
+      <div class="detail-actions" id="detailActions">
+        <!-- Refund, Query, Back buttons injected by JS -->
+      </div>
+    </div>
+  </main>
+
+  <!-- View 5: Transaction History -->
+  <main id="historyView" class="store-layout view hidden">
+    <div class="history-header">
+      <button id="historyBackBtn" class="back-btn" type="button">← Back to Menu</button>
+      <h2>Transaction History</h2>
+    </div>
+    <div class="history-filters" id="historyFilters">
+      <button class="filter-chip active" data-filter="all">All</button>
+      <button class="filter-chip" data-filter="SUCCESS">Success</button>
+      <button class="filter-chip" data-filter="FAILED">Failed</button>
+      <button class="filter-chip" data-filter="PROCESSING">Processing</button>
+    </div>
+    <div class="history-list" id="historyList">
+      <div class="empty-state" id="historyEmpty">
+        <span class="empty-icon">📋</span>
+        <p>No transactions yet</p>
+      </div>
+    </div>
+  </main>
 
   <!-- Developer Console Sidebar -->
   <aside id="devConsole" class="dev-console">
     <div class="dev-console-header">
-        <h3>Developer Console</h3>
-        <button id="closeDevConsoleBtn" class="dev-btn">&#10005;</button>
+      <h3>Developer Console</h3>
+      <button id="closeDevConsoleBtn" class="dev-btn" type="button">✕</button>
     </div>
     <div class="dev-console-body">
-        
-        <div class="dev-section">
-            <h4>Live Transaction</h4>
-            <div id="txnStatusPanel" class="txn-status">
-                <div><strong>Ref:</strong> <span id="txnRef">-</span></div>
-                <div><strong>Req:</strong> <span id="txnReq">-</span></div>
-                <div><strong>Status:</strong> <span id="txnState">Idle</span></div>
-            </div>
-            <button id="queryTxnBtn" class="dev-action-btn">Manual Query</button>
+      <div class="dev-section">
+        <h4>Live Transaction</h4>
+        <div id="txnStatusPanel" class="txn-status">
+          <div><strong>Ref:</strong> <span id="txnRef">-</span></div>
+          <div><strong>Req:</strong> <span id="txnReq">-</span></div>
+          <div><strong>Status:</strong> <span id="txnState">Idle</span></div>
         </div>
-
-        <div class="dev-section">
-            <h4>Events Connection</h4>
-            <span id="eventBadge" class="dev-badge idle">Disconnected</span>
-            <div class="dev-btns-row">
-                <button id="subBtn" class="dev-action-btn">Connect</button>
-                <button id="unsubBtn" class="dev-action-btn">Disconnect</button>
-                <button id="clearEventsBtn" class="dev-action-btn">Clear Flow</button>
-            </div>
+        <button id="queryTxnBtn" class="dev-action-btn" type="button">Manual Query</button>
+      </div>
+      <div class="dev-section">
+        <h4>Events Connection</h4>
+        <span id="eventBadge" class="dev-badge idle">Disconnected</span>
+        <div class="dev-btns-row">
+          <button id="subBtn" class="dev-action-btn" type="button">Connect</button>
+          <button id="unsubBtn" class="dev-action-btn" type="button">Disconnect</button>
+          <button id="clearEventsBtn" class="dev-action-btn" type="button">Clear</button>
         </div>
-
-        <div class="dev-section">
-            <h4>Event Flow</h4>
-            <div id="eventLog" class="event-log-container"></div>
-        </div>
-        
-        <div class="dev-section">
-            <h4>Configuration</h4>
-            <button id="openConfigModalBtn" class="dev-action-btn">View Settings</button>
-            <!-- Hide unneeded buttons -->
-            <button id="openStatusModalBtn" style="display:none;"></button>
-            <button id="openOpsModalBtn" style="display:none;"></button>
-            <button id="openObserveModalBtn" style="display:none;"></button>
-            <span id="modeBadge" style="display:none;"></span>
-        </div>
-
-        <div class="dev-section" style="display:none;">
-            <textarea id="responsePayload"></textarea>
-            <textarea id="requestPayload"></textarea>
-            <div id="linkGroups"></div>
-            <button id="rebuildBtn"></button>
-            <span id="endpointHint"></span>
-            <input id="eventUrl" />
-        </div>
+      </div>
+      <div class="dev-section">
+        <h4>Event Flow</h4>
+        <div id="eventLog" class="event-log-container"></div>
+      </div>
+      <div class="dev-section">
+        <h4>Configuration</h4>
+        <button id="openConfigModalBtn" class="dev-action-btn" type="button">Settings</button>
+      </div>
     </div>
   </aside>
 
-  <!-- Configuration Modal (Kept for dev setup) -->
+  <!-- Configuration Modal -->
   <div id="configModal" class="modal hidden" aria-hidden="true">
     <button class="modal-backdrop" data-modal-close type="button"></button>
     <section class="modal-card modal-card--wide" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h2>Configuration (Dev)</h2>
-        <button class="icon-button" data-modal-close type="button">&#10005;</button>
+        <h2>Configuration</h2>
+        <button class="icon-button" data-modal-close type="button">✕</button>
       </div>
       <div class="field-grid">
         <label>Backend URL<input id="backendUrl" value="http://127.0.0.1:8000" /></label>
@@ -236,28 +194,11 @@
         <label>Currency<input id="currency" value="USD" /></label>
         <label>Notify URL<input id="notifyUrl" value="http://47.77.239.198/webhook/sunbay" readonly /></label>
         <label>Event URL<input id="configEventUrl" value="http://47.77.239.198/terminal-events/sunbay" readonly /></label>
-        <label>Webhook Secret<input id="webhookSecret" /></label>
         <label>Return URL<input id="returnUrl" value="https://merchant.example.com/result" /></label>
       </div>
     </section>
   </div>
-  
-  <div id="opsModal" style="display:none;">
-    <div id="primaryActions"></div>
-    <select id="secondaryApi"></select>
-    <button id="runSecondaryBtn"></button>
-  </div>
-  <div id="observeModal" style="display:none;"></div>
-  <div id="statusPanelModal" style="display:none;"></div>
 
   <script src="./main.js"></script>
-  <script>
-    document.getElementById('openDevConsoleBtn').addEventListener('click', function() {
-        document.getElementById('devConsole').classList.add('visible');
-    });
-    document.getElementById('closeDevConsoleBtn').addEventListener('click', function() {
-        document.getElementById('devConsole').classList.remove('visible');
-    });
-  </script>
 </body>
 </html>
