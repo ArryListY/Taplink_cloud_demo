@@ -335,12 +335,28 @@ function renderDetail() {
   else if (txn.status === TxnStatus.FAILED) { iconClass = 'error'; iconChar = '✕'; title = 'Failed'; }
   el.detailResult.innerHTML = `<div class="result-icon ${iconClass}">${iconChar}</div><h2>${txn.type} - ${title}</h2>${txn.errorMessage ? `<p class="text-muted">${txn.errorMessage}</p>` : ''}<div class="result-amount">${formatMoney(txn.totalCents || 0)}</div>`;
   const fields = [['Type', txn.type], ['Status', txn.status], ['Order ID', txn.orderId || '-'], ['Request ID', txn.requestId || '-'], ['Transaction ID', txn.transactionId || '-'], ['Channel', txn.channel || '-'], ['Created', formatDate(txn.createdAt)]];
+
+  // Merge fields from webhook/query response
+  const responseData = txn.webhookData || txn.queryData;
+  if (responseData && typeof responseData === 'object') {
+    const displayedKeys = new Set(['transactionId', 'transactionRequestId', 'referenceOrderId']);
+    for (const [key, value] of Object.entries(responseData)) {
+      if (displayedKeys.has(key)) continue; // Already shown above
+      if (value === null || value === undefined || value === '') continue;
+      if (typeof value === 'object') {
+        fields.push([key, JSON.stringify(value)]);
+      } else {
+        fields.push([key, String(value)]);
+      }
+    }
+  }
+
   el.detailFields.innerHTML = fields.map(([l, v]) => `<div class="detail-field"><span class="detail-field-label">${l}</span><span class="detail-field-value">${v}</span></div>`).join('');
 
-  // Show webhook response data if available
-  if (txn.webhookData) {
-    const webhookHtml = `<div class="detail-webhook"><h3>Webhook Response</h3><pre class="webhook-json">${JSON.stringify(txn.webhookData, null, 2)}</pre></div>`;
-    el.detailFields.insertAdjacentHTML('beforeend', webhookHtml);
+  // Show full raw response JSON
+  if (responseData) {
+    const rawHtml = `<div class="detail-webhook"><h3>Full Response Data</h3><pre class="webhook-json">${JSON.stringify(responseData, null, 2)}</pre></div>`;
+    el.detailFields.insertAdjacentHTML('beforeend', rawHtml);
   }
 
   // Build actions based on transaction type & status
@@ -551,6 +567,11 @@ async function runQuery(requestId) {
     if (status && targetTxn) {
       targetTxn.status = status; targetTxn.updatedAt = Date.now();
       const ids = extractIdsFromResponse(r.data); if (ids.transactionId) targetTxn.transactionId = ids.transactionId;
+      // Save full query response data for detail display
+      const queryData = r.data?.data?.data || r.data?.data || r.data;
+      targetTxn.queryData = queryData;
+      // If no webhookData yet, use queryData as the source of detail fields
+      if (!targetTxn.webhookData) targetTxn.webhookData = queryData;
       saveTransactions(); if (currentView === AppView.PROGRESS) renderProgress(); if (currentView === AppView.DETAIL) renderDetail(); updateDevConsole();
     }
   } catch (e) { logEvent(`Query failed: ${e.message}`); }
