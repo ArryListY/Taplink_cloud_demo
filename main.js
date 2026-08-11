@@ -582,6 +582,14 @@ async function executeSale() {
   const description = productList.map(it => `${it.name} x${it.num}`).join(', ');
 
   // Create transaction record
+  const tipConfig = buildTipConfig();
+  // amount.tipAmount and tipConfig are mutually exclusive
+  const amountObj = { orderAmount: subtotal, taxAmount: tax, priceCurrency: cfg.currency, totalAmount: total };
+  if (!tipConfig) {
+    // Only include tipAmount/surchargeAmount when NOT using tipConfig
+    // And only if they have actual values (don't send 0)
+  }
+
   const txn = {
     id: requestId,
     orderId,
@@ -590,7 +598,7 @@ async function executeSale() {
     type: 'Sale',
     channel: 'terminal', // 'terminal' = semi-integration, 'online' = checkout session
     totalCents: total,
-    amount: { orderAmount: subtotal, taxAmount: tax, tipAmount: 0, surchargeAmount: 0, totalAmount: total, priceCurrency: cfg.currency },
+    amount: amountObj,
     status: TxnStatus.PROCESSING,
     progressMessage: 'Sending to terminal...',
     errorMessage: null,
@@ -623,25 +631,37 @@ async function executeSale() {
     merchantId: cfg.merchantId,
     referenceOrderId: orderId,
     transactionRequestId: requestId,
-    amount: txn.amount,
+    amount: amountObj,
     description,
     terminalSn: cfg.terminalSn,
     notifyUrl: FIXED_NOTIFY_WEBHOOK_URL,
     terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL,
     printReceipt: settings.printReceipt !== 'NONE' ? settings.printReceipt : undefined,
-    tipConfig: buildTipConfig(),
+    tipConfig: tipConfig || undefined,
     signatureConfig: buildSignatureConfig(),
   };
 
   try {
     const result = await callProxy('POST', '/v1/semi-integration/transaction/sale', payload);
-    addTimelineItem(`Gateway responded: HTTP ${result.httpStatus || '?'}`);
-    logEvent(`HTTP ${result.httpStatus}: POST /v1/semi-integration/transaction/sale`);
+    const respCode = extractCodeFromResponse(result.data);
+    const respMsg = extractMsgFromResponse(result.data);
+    addTimelineItem(`Gateway responded: HTTP ${result.httpStatus || '?'}, code=${respCode || '0'}`);
+    logEvent(`HTTP ${result.httpStatus}: POST sale, code=${respCode}, msg=${respMsg}`);
 
-    // Extract IDs from response
-    const ids = extractIdsFromResponse(result.data);
-    if (ids.transactionId) { txn.transactionId = ids.transactionId; }
-    if (ids.transactionRequestId) { txn.requestId = ids.transactionRequestId; }
+    if (respCode && respCode !== '0') {
+      // API returned an error (e.g. parameter error)
+      activeTxn.status = TxnStatus.FAILED;
+      activeTxn.errorMessage = `[${respCode}] ${respMsg}`;
+      activeTxn.updatedAt = Date.now();
+      saveTransactions();
+      renderProgress();
+      stopRecentEventPolling();
+    } else {
+      // Extract IDs from response
+      const ids = extractIdsFromResponse(result.data);
+      if (ids.transactionId) { txn.transactionId = ids.transactionId; }
+      if (ids.transactionRequestId) { txn.requestId = ids.transactionRequestId; }
+    }
     updateDevConsole();
   } catch (err) {
     addTimelineItem(`Request failed: ${err.message}. Waiting for webhook callback...`);
@@ -675,7 +695,7 @@ async function executeOnlineCheckout() {
     type: 'Checkout Session',
     channel: 'online', // online checkout session
     totalCents: total,
-    amount: { orderAmount: subtotal, taxAmount: tax, tipAmount: 0, surchargeAmount: 0, totalAmount: total, priceCurrency: cfg.currency },
+    amount: { orderAmount: subtotal, taxAmount: tax, priceCurrency: cfg.currency, totalAmount: total },
     status: TxnStatus.PROCESSING,
     progressMessage: 'Creating checkout session...',
     errorMessage: null,
@@ -717,8 +737,22 @@ async function executeOnlineCheckout() {
 
   try {
     const result = await callProxy('POST', '/v1/checkout/create-session', payload);
-    addTimelineItem(`Gateway responded: HTTP ${result.httpStatus || '?'}`);
-    logEvent(`HTTP ${result.httpStatus}: POST /v1/checkout/create-session`);
+    const respCode = extractCodeFromResponse(result.data);
+    const respMsg = extractMsgFromResponse(result.data);
+    addTimelineItem(`Gateway responded: HTTP ${result.httpStatus || '?'}, code=${respCode || '0'}`);
+    logEvent(`HTTP ${result.httpStatus}: POST create-session, code=${respCode}, msg=${respMsg}`);
+
+    if (respCode && respCode !== '0') {
+      // API returned an error
+      activeTxn.status = TxnStatus.FAILED;
+      activeTxn.errorMessage = `[${respCode}] ${respMsg}`;
+      activeTxn.updatedAt = Date.now();
+      saveTransactions();
+      renderProgress();
+      stopRecentEventPolling();
+      updateDevConsole();
+      return;
+    }
 
     const ids = extractIdsFromResponse(result.data);
     if (ids.transactionId) { txn.transactionId = ids.transactionId; }
