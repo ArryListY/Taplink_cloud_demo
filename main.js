@@ -345,6 +345,10 @@ const el = {
   configModal: document.getElementById("configModal"),
   opsModal: document.getElementById("opsModal"),
   observeModal: document.getElementById("observeModal"),
+  menuGrid: document.getElementById("menuGrid"),
+  cartList: document.getElementById("cartList"),
+  goToCheckoutBtn: document.getElementById("goToCheckoutBtn"),
+  backToMenuBtn: document.getElementById("backToMenuBtn"),
 };
 
 const PANEL_MODALS = {
@@ -1109,7 +1113,7 @@ function bindEvents() {
       });
   }
 
-  el.primaryActions.addEventListener("click", (event) => {
+  if (el.primaryActions) el.primaryActions.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     const button = target.closest("button[data-action]");
@@ -1120,7 +1124,7 @@ function bindEvents() {
     runRequest(apiId);
   });
 
-  el.runSecondaryBtn.addEventListener("click", () => {
+  if (el.runSecondaryBtn) el.runSecondaryBtn.addEventListener("click", () => {
     const apiId = el.secondaryApi.value;
     if (!apiId) return;
     rebuildRequest(apiId);
@@ -1128,6 +1132,7 @@ function bindEvents() {
   });
 
   [el.envType, el.customBaseUrl, el.appId, el.merchantId, el.terminalSn, el.currency, el.returnUrl, el.backendUrl, el.apiKey].forEach((node) => {
+    if(!node) return;
     node.addEventListener("input", () => {
       persistConfig();
       rebuildRequest(selectedApiId);
@@ -1138,22 +1143,22 @@ function bindEvents() {
     });
   });
 
-  el.rebuildBtn.addEventListener("click", () => rebuildRequest(selectedApiId));
+  if (el.rebuildBtn) el.rebuildBtn.addEventListener("click", () => rebuildRequest(selectedApiId));
   el.runBtn.addEventListener("click", () => {
     rebuildRequest("sale");
     runRequest("sale");
   });
-  el.runAuthBtn.addEventListener("click", () => {
+  if (el.runAuthBtn) el.runAuthBtn.addEventListener("click", () => {
     rebuildRequest("auth");
     runRequest("auth");
   });
-  el.queryTxnBtn.addEventListener("click", runSupplementQuery);
-  el.modalQueryTxnBtn.addEventListener("click", runSupplementQuery);
+  if (el.queryTxnBtn) el.queryTxnBtn.addEventListener("click", runSupplementQuery);
+  if (el.modalQueryTxnBtn) el.modalQueryTxnBtn.addEventListener("click", runSupplementQuery);
 
-  el.openStatusModalBtn.addEventListener("click", (event) => openPanelModal("status", event.currentTarget));
-  el.openConfigModalBtn.addEventListener("click", (event) => openPanelModal("config", event.currentTarget));
-  el.openOpsModalBtn.addEventListener("click", (event) => openPanelModal("ops", event.currentTarget));
-  el.openObserveModalBtn.addEventListener("click", (event) => openPanelModal("observe", event.currentTarget));
+  if (el.openStatusModalBtn) el.openStatusModalBtn.addEventListener("click", (event) => openPanelModal("status", event.currentTarget));
+  if (el.openConfigModalBtn) el.openConfigModalBtn.addEventListener("click", (event) => openPanelModal("config", event.currentTarget));
+  if (el.openOpsModalBtn) el.openOpsModalBtn.addEventListener("click", (event) => openPanelModal("ops", event.currentTarget));
+  if (el.openObserveModalBtn) el.openObserveModalBtn.addEventListener("click", (event) => openPanelModal("observe", event.currentTarget));
   [...Object.values(PANEL_MODALS), el.statusModal].forEach((modal) => {
     modal.addEventListener("click", (event) => {
       const target = event.target;
@@ -1161,12 +1166,12 @@ function bindEvents() {
     });
   });
 
-  el.subBtn.addEventListener("click", connectEventStream);
-  el.unsubBtn.addEventListener("click", () => {
+  if (el.subBtn) el.subBtn.addEventListener("click", connectEventStream);
+  if (el.subBtn) el.unsubBtn.addEventListener("click", () => {
     disconnectEventStream();
     logEvent("已断开实时状态流");
   });
-  el.clearEventsBtn.addEventListener("click", () => {
+  if (el.clearEventsBtn) el.clearEventsBtn.addEventListener("click", () => {
     el.eventLog.innerHTML = "";
   });
 
@@ -1174,7 +1179,7 @@ function bindEvents() {
     if (event.key === "Escape") closeModal();
   });
 
-  el.secondaryApi.addEventListener("change", () => {
+  if (el.secondaryApi) el.secondaryApi.addEventListener("change", () => {
     rebuildRequest(el.secondaryApi.value);
   });
 }
