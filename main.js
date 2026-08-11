@@ -780,15 +780,24 @@ async function executeAbort() {
 
   try {
     const result = await callProxy('POST', path, payload);
-    addTimelineItem(`${isOnline ? 'Expire-session' : 'Abort'} response: HTTP ${result.httpStatus || '?'}`);
-    logEvent(`${isOnline ? 'Expire-session' : 'Abort'} response: HTTP ${result.httpStatus}`);
+    const respCode = extractCodeFromResponse(result.data);
+    const isApiSuccess = respCode === '0' || respCode === '';
+    addTimelineItem(`${isOnline ? 'Expire-session' : 'Abort'} response: HTTP ${result.httpStatus || '?'} code=${respCode || 'N/A'}`);
+    logEvent(`${isOnline ? 'Expire-session' : 'Abort'} response: HTTP ${result.httpStatus}, code=${respCode}`);
 
-    // Mark as failed
-    activeTxn.status = TxnStatus.FAILED;
-    activeTxn.errorMessage = isOnline ? 'Checkout session expired/closed' : 'Transaction aborted by user';
-    activeTxn.updatedAt = Date.now();
-    saveTransactions();
-    renderProgress();
+    if (isApiSuccess) {
+      // Mark as failed (aborted/closed)
+      activeTxn.status = TxnStatus.FAILED;
+      activeTxn.errorMessage = isOnline ? 'Checkout session expired/closed' : 'Transaction aborted by user';
+      activeTxn.updatedAt = Date.now();
+      saveTransactions();
+      renderProgress();
+    } else {
+      // API returned error
+      const msg = extractMsgFromResponse(result.data);
+      logEvent(`${isOnline ? 'Expire-session' : 'Abort'} failed: [${respCode}] ${msg}`);
+      if (el.abortBtn) { el.abortBtn.disabled = false; el.abortBtn.textContent = isOnline ? 'Close Session' : 'Abort Transaction'; }
+    }
     updateDevConsole();
   } catch (err) {
     addTimelineItem(`${isOnline ? 'Expire-session' : 'Abort'} failed: ${err.message}`);
@@ -814,13 +823,22 @@ async function executeExpireSession(txn) {
 
   try {
     const result = await callProxy('POST', '/v1/checkout/expire-session', payload);
-    logEvent(`Expire-session response: HTTP ${result.httpStatus}`);
+    const respCode = extractCodeFromResponse(result.data);
+    const isApiSuccess = respCode === '0' || respCode === '';
+    logEvent(`Expire-session response: HTTP ${result.httpStatus}, code=${respCode}`);
 
-    txn.status = TxnStatus.FAILED;
-    txn.errorMessage = 'Checkout session expired/closed';
-    txn.updatedAt = Date.now();
-    saveTransactions();
-    renderDetail();
+    if (isApiSuccess) {
+      txn.status = TxnStatus.FAILED;
+      txn.errorMessage = 'Checkout session expired/closed';
+      txn.updatedAt = Date.now();
+      saveTransactions();
+      renderDetail();
+      updateDevConsole();
+    } else {
+      const msg = extractMsgFromResponse(result.data);
+      logEvent(`Expire-session failed: [${respCode}] ${msg}`);
+      if (btn) { btn.disabled = false; btn.textContent = 'Close Session (Expire)'; }
+    }
     updateDevConsole();
   } catch (err) {
     logEvent(`Expire-session failed: ${err.message}`);
@@ -949,6 +967,25 @@ function extractStatusFromResponse(data) {
     }
   }
   return null;
+}
+
+function extractCodeFromResponse(data) {
+  if (!data) return '';
+  const nodes = collectPlainObjects(data);
+  for (const node of nodes) {
+    if (node.code !== undefined) return String(node.code);
+  }
+  return '';
+}
+
+function extractMsgFromResponse(data) {
+  if (!data) return '';
+  const nodes = collectPlainObjects(data);
+  for (const node of nodes) {
+    if (node.msg) return String(node.msg);
+    if (node.message) return String(node.message);
+  }
+  return '';
 }
 
 function collectPlainObjects(obj, acc = []) {
