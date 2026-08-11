@@ -507,18 +507,21 @@ function rebuildRequest(apiId = selectedApiId) {
 function renderProducts() {
   el.productList.innerHTML = "";
   for (const p of PRODUCTS) {
-    const node = document.createElement("article");
+    const node = document.createElement("div");
     node.className = "product";
     node.innerHTML = `
-      <div class="product-top">
-        <strong>${p.name}</strong>
-        <span class="price">${formatMoney(p.priceCents)}</span>
+      <div class="product-info">
+        <div class="product-icon">☕️</div>
+        <div>
+           <div class="product-name">${p.name}</div>
+           <div class="stepper-mini">
+              <button data-op="sub" data-id="${p.id}" type="button">-</button>
+              <span>${p.qty}</span>
+              <button data-op="add" data-id="${p.id}" type="button">+</button>
+           </div>
+        </div>
       </div>
-      <div class="stepper">
-        <button data-op="sub" data-id="${p.id}" type="button">-</button>
-        <span>${p.qty}</span>
-        <button data-op="add" data-id="${p.id}" type="button">+</button>
-      </div>
+      <div class="product-price">${formatMoney(p.priceCents)}</div>
     `;
     el.productList.appendChild(node);
   }
@@ -567,22 +570,23 @@ function applyLifecycleByEventType(eventType) {
   if (!et) return;
   
   if (el.currentEventTitle) {
-      el.currentEventTitle.textContent = et;
+      // Just keep it simple & professional
+      el.currentEventTitle.textContent = "Processing Payment";
   }
   
   const descMap = {
-      "ORDER_RECEIVED": "等待顾客操作",
-      "PAYMENT_PRESENTED": "请顾客刷卡/挥卡/插卡",
-      "PIN_ENTERING": "正在输入密码",
-      "PAYMENT_PROCESSING": "支付处理中",
-      "SIGNATURE_CAPTURED": "签名已采集",
-      "PRINTING": "正在打印小票",
-      "PRINT_COMPLETED": "打印完成",
-      "TRANSACTION_ENDED": "流程结束，查询最终结果..."
+      "ORDER_RECEIVED": "Cloud Connected",
+      "PAYMENT_PRESENTED": "Waiting for Payment",
+      "PIN_ENTERING": "Waiting for Payment",
+      "PAYMENT_PROCESSING": "Processing",
+      "SIGNATURE_CAPTURED": "Processing",
+      "PRINTING": "Processing",
+      "PRINT_COMPLETED": "Processing",
+      "TRANSACTION_ENDED": "Finalizing..."
   };
   
   if (el.currentEventSub) {
-      el.currentEventSub.textContent = descMap[et] || "处理中";
+      el.currentEventSub.textContent = descMap[et] || "Processing";
   }
 }
 
@@ -614,40 +618,44 @@ function updateTxnStatus(state, payload = {}) {
   el.txnRef.textContent = payload.referenceOrderId || (activeTxn && activeTxn.referenceOrderId) || "-";
   el.txnReq.textContent = payload.transactionRequestId || (activeTxn && activeTxn.transactionRequestId) || "-";
   el.modalRef.textContent = el.txnRef.textContent;
-  el.modalReq.textContent = el.txnReq.textContent;
+  if(document.getElementById("modalReq")) document.getElementById("modalReq").textContent = el.txnReq.textContent;
 
   if (isSuccess) {
-    el.txnState.textContent = `已完成(${status})`;
+    el.txnState.textContent = `Completed (${status})`;
     el.txnStatusPanel.className = "txn-status success";
-    el.modalState.textContent = `已完成(${status})`;
-    el.statusModalTitle.textContent = "交易成功";
     if (el.loadingLifecycle) el.loadingLifecycle.style.display = "none";
-    if (el.currentEventStep) {
-        el.currentEventStep.className = "lifecycle-step done";
-        if (el.currentEventTitle) el.currentEventTitle.textContent = "交易成功";
-        if (el.currentEventSub) el.currentEventSub.textContent = status;
+    if (document.getElementById("errorView")) document.getElementById("errorView").style.display = "none";
+    
+    // Show success view
+    const successView = document.getElementById("successView");
+    if(successView) {
+        successView.style.display = "block";
+        document.getElementById("successAmountText").textContent = formatMoney(activeTxn ? (activeTxn.reqAmount ? activeTxn.reqAmount.orderAmount : 0) : 0);
     }
     return;
   }
+  
   if (isFailed) {
-    el.txnState.textContent = `失败/终止(${status})`;
+    el.txnState.textContent = `Failed/Aborted (${status})`;
     el.txnStatusPanel.className = "txn-status failed";
-    el.modalState.textContent = `失败/终止(${status})`;
-    el.statusModalTitle.textContent = "交易失败";
     if (el.loadingLifecycle) el.loadingLifecycle.style.display = "none";
-    if (el.currentEventStep) {
-        el.currentEventStep.className = "lifecycle-step fail";
-        if (el.currentEventTitle) el.currentEventTitle.textContent = "交易失败";
-        if (el.currentEventSub) el.currentEventSub.textContent = status;
+    if (document.getElementById("successView")) document.getElementById("successView").style.display = "none";
+    
+    // Show error view
+    const errorView = document.getElementById("errorView");
+    if(errorView) {
+        errorView.style.display = "block";
     }
     return;
   }
 
-  el.txnState.textContent = status ? `进行中(${status})` : "处理中";
+  el.txnState.textContent = status ? `Processing (${status})` : "Processing";
   el.txnStatusPanel.className = "txn-status processing";
-  el.modalState.textContent = status ? `进行中(${status})` : "处理中";
-  el.statusModalTitle.textContent = "交易处理中";
+  
+  // Show loading view
   if (el.loadingLifecycle) el.loadingLifecycle.style.display = "flex";
+  if (document.getElementById("successView")) document.getElementById("successView").style.display = "none";
+  if (document.getElementById("errorView")) document.getElementById("errorView").style.display = "none";
 }
 
 function applyNotifyFinalState(state, snap, webhookEventType) {
@@ -667,13 +675,17 @@ function applyNotifyFinalState(state, snap, webhookEventType) {
 
 function resetModalForTxn(payload) {
   el.modalRef.textContent = payload.referenceOrderId || "-";
-  el.modalReq.textContent = payload.transactionRequestId || "-";
-  el.modalState.textContent = "进行中";
-  el.modalTerminalEvent.textContent = "等待事件";
-  el.modalNotifyStatus.textContent = "等待 transactionStatus";
-  el.modalTimeline.innerHTML = "";
+  if(document.getElementById("modalReq")) document.getElementById("modalReq").textContent = payload.transactionRequestId || "-";
+  el.modalState.textContent = "Processing";
+  if(document.getElementById("modalTerminalEvent")) document.getElementById("modalTerminalEvent").textContent = "Waiting for Event";
   
-  appendModalTimeline("已发起交易，等待终端和回调状态...");
+  if (el.loadingLifecycle) el.loadingLifecycle.style.display = "flex";
+  if (document.getElementById("successView")) document.getElementById("successView").style.display = "none";
+  if (document.getElementById("errorView")) document.getElementById("errorView").style.display = "none";
+  if (el.currentEventTitle) el.currentEventTitle.textContent = "Processing Payment";
+  if (el.currentEventSub) el.currentEventSub.textContent = "Connecting payment terminal...";
+
+  appendModalTimeline("Transaction initiated...");
   showStatusModal();
 }
 
@@ -848,6 +860,7 @@ function handleEventData(raw) {
         appendModalTimeline("终端事件已结束，等待最终交易结果");
       }
     } else if (eventType || requestId || transactionId) {
+    } else if (eventType || requestId || transactionId) {
       logEvent(`[terminal忽略] 当前交易reqId=${activeTxn?.transactionRequestId || "-"} 收到reqId=${requestId || "-"} txnId=${transactionId || "-"} eventType=${eventType || "-"}`);
     }
   }
@@ -888,301 +901,6 @@ function handleEventData(raw) {
         appendModalTimeline(`notifyUrl transactionStatus -> ${state} (reqId=${snap.transactionRequestId || "-"})`);
         appendModalTimeline("已收到交易结果，但等待 terminalEventNotifyUrl 的 TRANSACTION_ENDED");
         logEvent(`[notify待确认] reqId=${snap.transactionRequestId || "-"} eventType=${webhookEventType} status=${state}`);
-      } else {
-        applyNotifyFinalState(state, snap, webhookEventType);
-      }
-    }
-  }
-}
-
-function parseRequestPayload() {
-  const text = el.requestPayload.value.trim();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error("请求参数不是有效 JSON");
-  }
-}
-
-function buildGetQuery(payload) {
-  const query = {};
-  for (const [key, value] of Object.entries(payload || {})) {
-    if (value === null || value === undefined) continue;
-    if (typeof value === "object") continue;
-    if (String(value).trim() === "") continue;
-    query[key] = value;
-  }
-  return query;
-}
-
-function openModal(modal, opener = document.activeElement) {
-  if (!modal) return;
-  if (activeModal && activeModal !== modal) closeModal(activeModal, false);
-  activeModal = modal;
-  modalOpener = opener instanceof HTMLElement ? opener : null;
-  modal.classList.remove("hidden");
-  modal.setAttribute("aria-hidden", "false");
-  requestAnimationFrame(() => {
-    if (activeModal === modal) modal.classList.add("is-open");
-  });
-  const dismissControl = modal.querySelector(".icon-button, .modal-actions-row [data-modal-close]");
-  if (dismissControl instanceof HTMLElement) {
-    window.setTimeout(() => dismissControl.focus(), 210);
-  }
-}
-
-function closeModal(modal = activeModal, restoreFocus = true) {
-  if (!modal || modal.classList.contains("hidden")) return;
-  modal.classList.remove("is-open");
-  modal.setAttribute("aria-hidden", "true");
-  if (activeModal === modal) activeModal = null;
-  window.setTimeout(() => {
-    if (!modal.classList.contains("is-open")) modal.classList.add("hidden");
-  }, 190);
-  if (restoreFocus && modalOpener && document.contains(modalOpener)) {
-    const opener = modalOpener;
-    modalOpener = null;
-    window.setTimeout(() => opener.focus(), 200);
-  }
-}
-
-function openPanelModal(sectionKey, opener) {
-  openModal(PANEL_MODALS[sectionKey], opener);
-}
-
-function collectPlainObjects(root, maxNodes = 40) {
-  const out = [];
-  const queue = [root];
-  while (queue.length && out.length < maxNodes) {
-    const cur = queue.shift();
-    if (!cur || typeof cur !== "object" || Array.isArray(cur)) continue;
-    out.push(cur);
-    for (const value of Object.values(cur)) {
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        queue.push(value);
-      }
-    }
-  }
-  return out;
-}
-
-function extractStatusFromQueryResponse(root) {
-  const nodes = collectPlainObjects(root);
-  for (const node of nodes) {
-    const direct = node.transactionStatus || node.status || "";
-    if (direct) return String(direct).toUpperCase();
-
-    const resultCode = node.transactionResultCode || node.resultCode || "";
-    if (String(resultCode) === "000") return "S";
-    if (resultCode) return "F";
-  }
-  return "";
-}
-
-function extractTxnIdsFromResponse(root) {
-  const nodes = collectPlainObjects(root);
-  let transactionId = "";
-  let referenceOrderId = "";
-  let transactionRequestId = "";
-  for (const node of nodes) {
-    if (!transactionId && node.transactionId) {
-      transactionId = String(node.transactionId);
-    }
-    if (!referenceOrderId && node.referenceOrderId) {
-      referenceOrderId = String(node.referenceOrderId);
-    }
-    if (!transactionRequestId && node.transactionRequestId) {
-      transactionRequestId = String(node.transactionRequestId);
-    }
-    if (transactionId && referenceOrderId && transactionRequestId) break;
-  }
-  return { transactionId, referenceOrderId, transactionRequestId };
-}
-
-function extractCodeMessageFromResponse(root) {
-  const nodes = collectPlainObjects(root);
-  let code = "";
-  let msg = "";
-  for (const node of nodes) {
-    if (!code && node.code) code = String(node.code);
-    if (!msg && node.msg) msg = String(node.msg);
-    if (code && msg) break;
-  }
-  return { code, msg };
-}
-
-async function proxyQueryTransaction(headers, queryPayload) {
-  const response = await fetch(`${getBackendUrl()}/api/proxy`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      mode: "real",
-      base_url: getBaseUrl(),
-      method: "GET",
-      path: "/v1/transaction/query",
-      headers,
-      payload: {},
-      query: queryPayload,
-    }),
-  });
-
-  const raw = await response.text();
-  let data = raw;
-  try {
-    data = raw ? JSON.parse(raw) : null;
-  } catch {
-    data = raw;
-  }
-
-  return { response, data };
-}
-
-function connectEventStream() {
-  if (eventSource) return;
-  const backend = getBackendUrl();
-  setEventBadge("connecting");
-  eventSource = new EventSource(`${backend}/api/events/stream`);
-  eventSource.onopen = () => {
-    setEventBadge("connected");
-    logEvent("实时状态流已连接，等待 webhook 推送...");
-  };
-  eventSource.onmessage = (ev) => {
-    if (ev.data && ev.data !== "{}") {
-      handleEventData(ev.data);
-    }
-  };
-  eventSource.addEventListener("webhook_received", (ev) => {
-    logEvent(`[webhook_received] ${ev.data}`);
-    handleEventData(ev.data);
-  });
-  eventSource.addEventListener("terminal_notify_received", (ev) => {
-    logEvent(`[terminal_notify_received] ${ev.data}`);
-    handleEventData(ev.data);
-  });
-  eventSource.addEventListener("dingtalk_forward", (ev) => {
-    logEvent(`[dingtalk_forward] ${ev.data}`);
-  });
-  eventSource.onerror = () => {
-    setEventBadge("error");
-    logEvent("实时状态流连接异常，请检查后端服务");
-  };
-}
-
-function disconnectEventStream() {
-  if (eventSource) {
-    eventSource.close();
-    eventSource = null;
-  }
-  stopRecentEventPolling();
-  setEventBadge("idle");
-}
-
-function stopRecentEventPolling() {
-  if (recentEventTimer) {
-    clearInterval(recentEventTimer);
-    recentEventTimer = null;
-  }
-}
-
-async function replayRecentEventsForActiveTxn() {
-  if (!activeTxn || activeTxn.finalFromNotify) return;
-  try {
-    const response = await fetch(`${getBackendUrl()}/api/events/recent`);
-    if (!response.ok) return;
-    const data = await response.json();
-    const items = Array.isArray(data.items) ? data.items : [];
-    let replayed = 0;
-    for (const item of items) {
-      if (item && (item.type === "terminal_notify_received" || item.type === "webhook_received")) {
-        const before = activeTxn.seenEventKeys.size;
-        handleEventData(JSON.stringify(item));
-        if (activeTxn.seenEventKeys.size > before) replayed += 1;
-      }
-    }
-    if (replayed) {
-      logEvent(`已回放 ${replayed} 条服务端回调事件，补齐可能错过的实时通知`);
-    }
-  } catch (err) {
-    logEvent(`回放服务端事件失败: ${err.message || "unknown"}`);
-  }
-}
-
-function startRecentEventPolling() {
-  if (recentEventTimer) clearInterval(recentEventTimer);
-  recentEventTimer = setInterval(() => {
-    void replayRecentEventsForActiveTxn();
-  }, 1500);
-}
-
-async function runSupplementQuery() {
-  if (!activeTxn || (!activeTxn.transactionId && !activeTxn.transactionRequestId)) {
-    appendModalTimeline("暂无可查询交易，请先发起交易");
-    return;
-  }
-
-  const transactionId = activeTxn.transactionId && activeTxn.transactionId !== "-" ? activeTxn.transactionId : "";
-  const transactionRequestId = activeTxn.transactionRequestId && activeTxn.transactionRequestId !== "-" ? activeTxn.transactionRequestId : "";
-
-  const headers = {
-    "X-Timestamp": `${Date.now()}`,
-    "X-Client-Request-Id": requestIdUuid(),
-  };
-  const auth = buildAuthorization();
-  if (auth) headers.Authorization = auth;
-
-  el.queryTxnBtn.disabled = true;
-  el.queryTxnBtn.textContent = "查询中...";
-  el.modalQueryTxnBtn.disabled = true;
-  el.modalQueryTxnBtn.textContent = "查询中...";
-  appendModalTimeline("发起补充查询: /v1/transaction/query");
-
-  try {
-    const attempts = [
-      {
-        label: "transactionId",
-        query: {
-          appId: el.appId.value,
-          merchantId: el.merchantId.value,
-          transactionId,
-        },
-      },
-      {
-        label: "transactionRequestId",
-        query: {
-          appId: el.appId.value,
-          merchantId: el.merchantId.value,
-          transactionRequestId,
-        },
-      },
-    ].filter((item) => item.query.transactionId || item.query.transactionRequestId);
-
-    let matchedStatus = "";
-    let lastResult = null;
-
-    for (const attempt of attempts) {
-      const { response, data } = await proxyQueryTransaction(headers, attempt.query);
-      const wrapped = {
-        mode: "real",
-        endpoint: "GET /v1/transaction/query",
-        attempt: attempt.label,
-        httpStatus: response.status,
-        ok: response.ok,
-        data,
-      };
-      el.responsePayload.value = JSON.stringify(wrapped, null, 2);
-      appendModalTimeline(`补充查询(${attempt.label})响应 HTTP ${response.status}`);
-
-      lastResult = data;
-      const statusFromQuery = extractStatusFromQueryResponse(data);
-      const idsFromQuery = extractTxnIdsFromResponse(data);
-
-      if (activeTxn) {
-        if (idsFromQuery.transactionId) activeTxn.transactionId = idsFromQuery.transactionId;
-        if (idsFromQuery.referenceOrderId) activeTxn.referenceOrderId = idsFromQuery.referenceOrderId;
-        if (idsFromQuery.transactionRequestId) activeTxn.transactionRequestId = idsFromQuery.transactionRequestId;
-      }
-
       if (statusFromQuery) {
         matchedStatus = statusFromQuery;
         break;
@@ -1190,8 +908,10 @@ async function runSupplementQuery() {
     }
 
     if (matchedStatus) {
-      appendModalTimeline(`查询观察到状态 -> ${matchedStatus}；查询结果不会替代 notifyUrl.transactionStatus`);
-      logEvent(`[查询仅供参考] status=${matchedStatus}，等待双回调确认`);
+      appendModalTimeline(`查询观察到状态 -> ${matchedStatus}；依据此查询结果直接更新交易状态`);
+      logEvent(`[查询更新状态] status=${matchedStatus}`);
+      applyNotifyFinalState(matchedStatus, activeTxn, "MANUAL_QUERY");
+    } else {
     } else {
       const idsFromQuery = extractTxnIdsFromResponse(lastResult || {});
       const queryCodeInfo = extractCodeMessageFromResponse(lastResult || {});
@@ -1265,7 +985,7 @@ async function runRequest(apiId = selectedApiId) {
 
   el.runBtn.disabled = true;
   el.runAuthBtn.disabled = true;
-  el.runBtn.textContent = "执行中...";
+  el.runBtn.innerHTML = "Processing...";
 
   const headers = {
     "Content-Type": "application/json",
@@ -1327,7 +1047,7 @@ async function runRequest(apiId = selectedApiId) {
   } finally {
     el.runBtn.disabled = false;
     el.runAuthBtn.disabled = false;
-    el.runBtn.textContent = "Sale · 收款";
+    el.runBtn.innerHTML = `Pay <span id="payBtnAmount">${formatMoney(computeAmount().grandTotal)}</span>`;
   }
 }
 

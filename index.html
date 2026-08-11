@@ -1,172 +1,234 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TapLink Cloud Demo Checkout</title>
+  <title>SUNBAY Coffee Store Checkout</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <div class="app-background" aria-hidden="true"></div>
-  <main class="layout">
-    <header class="hero card">
-      <div class="hero-copy">
-        <span class="eyebrow">SUNBAY CLOUD · POS DEMO</span>
-        <h1>TapLink 线上收银台</h1>
-        <p>选择商品后直接发起收款。终端事件将实时显示，收到终态即结束订单。</p>
-        <div class="status-row" aria-live="polite">
-          <span id="modeBadge" class="badge">线上模式: REAL</span>
-          <span id="eventBadge" class="badge idle">事件状态: 未连接</span>
-        </div>
-      </div>
-      <nav class="hero-actions" aria-label="收银台工具">
-        <button id="openStatusModalBtn" class="btn ghost" type="button">交易状态</button>
-        <button id="openConfigModalBtn" class="btn ghost" type="button">收银配置</button>
-        <button id="openOpsModalBtn" class="btn ghost" type="button">更多操作</button>
-        <button id="openObserveModalBtn" class="btn ghost" type="button">响应与事件</button>
-      </nav>
-    </header>
+  
+  <header class="store-header">
+    <div class="header-inner">
+      <div class="logo">SUNBAY COFFEE</div>
+      <button id="openDevConsoleBtn" class="dev-btn" title="Developer Console">{}</button>
+    </div>
+  </header>
 
-    <section class="checkout-shell" aria-label="订单结算">
-      <article class="card checkout-card">
-        <div class="checkout-card-head">
-          <div>
-            <span class="eyebrow">CHECKOUT</span>
-            <h2>订单信息</h2>
+  <main class="store-layout">
+    <div class="checkout-grid">
+      <!-- Left Column: Customer Information -->
+      <section class="checkout-left">
+        <h2>Checkout</h2>
+        <div class="info-section">
+          <h3>Customer Information</h3>
+          <div class="field-list">
+            <input type="email" placeholder="Email address" value="customer@example.com" />
           </div>
-          <span class="checkout-secure">安全联调环境</span>
         </div>
-        <div id="productList" class="product-list"></div>
-        <div class="totals">
-          <div><span>Order Amount</span><strong id="orderAmountText">$0.00</strong></div>
-          <div><span>Total Amount</span><strong id="totalAmountText">$0.00</strong></div>
+        
+        <div class="info-section">
+          <h3>Billing Address</h3>
+          <div class="field-list">
+            <input type="text" placeholder="First Name" value="John" />
+            <input type="text" placeholder="Last Name" value="Doe" />
+            <select><option>United States</option></select>
+            <input type="text" placeholder="Address" value="123 Coffee St" />
+            <div class="field-row">
+                <input type="text" placeholder="City" value="Seattle" />
+                <input type="text" placeholder="State" value="WA" />
+                <input type="text" placeholder="ZIP Code" value="98101" />
+            </div>
+          </div>
         </div>
-        <div class="checkout-paybar">
-          <button id="runBtn" class="btn checkout-pay-btn" type="button">Sale · 收款</button>
-          <button id="runAuthBtn" class="btn checkout-auth-btn" type="button">Auth · 预授权</button>
+
+        <div class="info-section">
+            <h3>Payment Method</h3>
+            <div class="payment-selection">
+                <div class="payment-option border-active">
+                    <label>
+                        <input type="radio" checked disabled />
+                        <span>Pay via SUNBAY Terminal</span>
+                    </label>
+                </div>
+            </div>
         </div>
-        <p class="checkout-note">点击按钮后仅表示请求已提交。请在交易处理弹窗中查看终端事件，直到收到 <code>TRANSACTION_ENDED</code>，并且 notifyUrl 返回 <code>transactionStatus</code>。</p>
-      </article>
-    </section>
+      </section>
+
+      <!-- Right Column: Order Summary -->
+      <section class="checkout-right">
+        <div class="order-summary card">
+          <h3>Order Summary</h3>
+          <div id="productList" class="product-list"></div>
+          
+          <div class="divider"></div>
+          
+          <div class="summary-line">
+            <span>Subtotal</span>
+            <span id="orderAmountText">$0.00</span>
+          </div>
+          <div class="summary-line">
+            <span>Tax (Estimated)</span>
+            <span id="taxAmountText">$0.00</span>
+          </div>
+          
+          <div class="divider"></div>
+          
+          <div class="summary-line total-line">
+            <span>Total</span>
+            <span id="totalAmountText">$0.00</span>
+          </div>
+          
+          <button id="runBtn" class="pay-button" type="button">Pay <span id="payBtnAmount">$0.00</span></button>
+          
+          <!-- Hidden auth button to keep logic valid -->
+          <button id="runAuthBtn" style="display:none;" type="button">Auth</button>
+        </div>
+      </section>
+    </div>
   </main>
 
-  <div id="statusPanelModal" class="modal hidden" aria-hidden="true">
-    <button class="modal-backdrop" data-modal-close type="button" aria-label="关闭交易状态弹窗"></button>
-    <section class="modal-card modal-card--compact" role="dialog" aria-modal="true" aria-labelledby="statusPanelTitle">
-      <div class="modal-head">
-        <div><span class="eyebrow">TRANSACTION</span><h2 id="statusPanelTitle">当前交易状态</h2></div>
-        <button class="icon-button" data-modal-close type="button" aria-label="关闭">×</button>
+  <!-- Payment Processing & Success Modal -->
+  <div id="statusModal" class="modal hidden" aria-hidden="true">
+    <button class="modal-backdrop" data-modal-close type="button"></button>
+    <section class="modal-card payment-modal" role="dialog" aria-modal="true">
+      
+      <div id="loadingLifecycle" class="lifecycle">
+        <div class="loader-spinner"></div>
+        <div class="lifecycle-step active" id="currentEventStep">
+           <h2 class="step-title" id="currentEventTitle">Processing Payment</h2>
+           <p class="step-sub" id="currentEventSub">Connecting payment terminal...</p>
+        </div>
+        <p class="instruction-text">Please complete payment on the device.</p>
       </div>
-      <div id="txnStatusPanel" class="txn-status idle">
-        <div><strong>当前交易:</strong> <span id="txnRef">-</span></div>
-        <div><strong>请求流水:</strong> <span id="txnReq">-</span></div>
-        <div><strong>状态:</strong> <span id="txnState">未开始</span></div>
+      
+      <div id="successView" style="display:none;" class="success-view">
+         <div class="success-icon">✓</div>
+         <h2>Payment Successful</h2>
+         <p>Order #<span id="modalRef">-</span></p>
+         <div class="success-amount" id="successAmountText">$0.00</div>
+         
+         <div class="success-actions">
+           <button class="ghost-btn" data-modal-close>View Receipt</button>
+           <button class="primary-btn" data-modal-close onclick="location.reload()">Continue Shopping</button>
+         </div>
       </div>
-      <p class="hint">当 terminalEventNotifyUrl 到达 TRANSACTION_ENDED 后，再以 notifyUrl 回调确认最终交易状态。</p>
-      <div class="modal-actions-row">
-        <button id="queryTxnBtn" class="btn" type="button">补充查询交易结果</button>
-        <button class="btn ghost" data-modal-close type="button">关闭</button>
+      
+      <div id="errorView" style="display:none;" class="error-view">
+         <div class="error-icon">×</div>
+         <h2>Payment Failed</h2>
+         <p id="errorMsgText">Transaction declined or cancelled.</p>
+         <button class="primary-btn" data-modal-close>Try Again</button>
       </div>
+      
+      <button id="closeStatusModal" class="hidden-btn" data-modal-close type="button">×</button>
+      <!-- Needed for internal references -->
+      <span id="statusModalTitle" style="display:none;"></span>
+      <span id="modalReq" style="display:none;"></span>
+      <span id="modalState" style="display:none;"></span>
+      <span id="modalTerminalEvent" style="display:none;"></span>
+      <span id="modalNotifyStatus" style="display:none;"></span>
+      <div id="modalTimeline" style="display:none;"></div>
+      <button id="modalQueryTxnBtn" style="display:none;"></button>
     </section>
   </div>
 
+  <!-- Developer Console Sidebar -->
+  <aside id="devConsole" class="dev-console">
+    <div class="dev-console-header">
+        <h3>Developer Console</h3>
+        <button id="closeDevConsoleBtn" class="dev-btn">×</button>
+    </div>
+    <div class="dev-console-body">
+        
+        <div class="dev-section">
+            <h4>Live Transaction</h4>
+            <div id="txnStatusPanel" class="txn-status">
+                <div><strong>Ref:</strong> <span id="txnRef">-</span></div>
+                <div><strong>Req:</strong> <span id="txnReq">-</span></div>
+                <div><strong>Status:</strong> <span id="txnState">Idle</span></div>
+            </div>
+            <button id="queryTxnBtn" class="dev-action-btn">Manual Query</button>
+        </div>
+
+        <div class="dev-section">
+            <h4>Events Connection</h4>
+            <span id="eventBadge" class="dev-badge idle">Disconnected</span>
+            <div class="dev-btns-row">
+                <button id="subBtn" class="dev-action-btn">Connect</button>
+                <button id="unsubBtn" class="dev-action-btn">Disconnect</button>
+                <button id="clearEventsBtn" class="dev-action-btn">Clear Flow</button>
+            </div>
+        </div>
+
+        <div class="dev-section">
+            <h4>Event Flow</h4>
+            <div id="eventLog" class="event-log-container"></div>
+        </div>
+        
+        <div class="dev-section">
+            <h4>Configuration</h4>
+            <button id="openConfigModalBtn" class="dev-action-btn">View Settings</button>
+            <!-- Hide unneeded buttons -->
+            <button id="openStatusModalBtn" style="display:none;"></button>
+            <button id="openOpsModalBtn" style="display:none;"></button>
+            <button id="openObserveModalBtn" style="display:none;"></button>
+            <span id="modeBadge" style="display:none;"></span>
+        </div>
+
+        <div class="dev-section" style="display:none;">
+            <!-- Hidden payload textareas so logic continues to work -->
+            <textarea id="responsePayload"></textarea>
+            <textarea id="requestPayload"></textarea>
+            <div id="linkGroups"></div>
+            <button id="rebuildBtn"></button>
+            <span id="endpointHint"></span>
+            <input id="eventUrl" />
+        </div>
+    </div>
+  </aside>
+
+  <!-- Configuration Modal (Kept for dev setup) -->
   <div id="configModal" class="modal hidden" aria-hidden="true">
-    <button class="modal-backdrop" data-modal-close type="button" aria-label="关闭收银配置弹窗"></button>
-    <section class="modal-card modal-card--wide" role="dialog" aria-modal="true" aria-labelledby="configModalTitle">
+    <button class="modal-backdrop" data-modal-close type="button"></button>
+    <section class="modal-card modal-card--wide" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <div><span class="eyebrow">SETTINGS</span><h2 id="configModalTitle">收银配置</h2></div>
-        <button class="icon-button" data-modal-close type="button" aria-label="关闭">×</button>
+        <h2>Configuration (Dev)</h2>
+        <button class="icon-button" data-modal-close type="button">×</button>
       </div>
-      <p class="modal-subtitle">配置将仅保存于当前浏览器，用于构造后续交易请求。</p>
       <div class="field-grid">
-        <label>Demo Backend URL<input id="backendUrl" value="http://127.0.0.1:8000" /></label>
-        <label>环境<select id="envType"><option value="uat" selected>UAT</option><option value="sandbox">Sandbox</option><option value="production">Production</option><option value="custom">Custom</option></select></label>
+        <label>Backend URL<input id="backendUrl" value="http://127.0.0.1:8000" /></label>
+        <label>Env<select id="envType"><option value="uat" selected>UAT</option><option value="sandbox">Sandbox</option><option value="production">Production</option><option value="custom">Custom</option></select></label>
         <label>Custom Base URL<input id="customBaseUrl" value="https://open.sunbay-uat.us" /></label>
-        <label>API Key (Bearer)<input id="apiKey" placeholder="sk_test_xxx" /></label>
+        <label>API Key<input id="apiKey" /></label>
         <label>App ID<input id="appId" value="smfut73g9wbwj9eb" /></label>
         <label>Merchant ID<input id="merchantId" value="M1263029001" /></label>
         <label>Terminal SN<input id="terminalSn" value="P339252L11100" /></label>
-        <label>Currency<input id="currency" value="USD" maxlength="3" /></label>
-        <label>Notify URL（固定）<input id="notifyUrl" value="http://47.77.239.198/webhook/sunbay" readonly /></label>
-        <label>Terminal Event Notify URL（固定）<input id="configEventUrl" value="http://47.77.239.198/terminal-events/sunbay" readonly /></label>
-        <label>Webhook Secret（可选）<input id="webhookSecret" placeholder="签名密钥，仅在后端配置启用校验" /></label>
-        <label>Merchant Return URL<input id="returnUrl" value="https://merchant.example.com/result" /></label>
+        <label>Currency<input id="currency" value="USD" /></label>
+        <label>Notify URL<input id="notifyUrl" value="http://47.77.239.198/webhook/sunbay" readonly /></label>
+        <label>Event URL<input id="configEventUrl" value="http://47.77.239.198/terminal-events/sunbay" readonly /></label>
+        <label>Webhook Secret<input id="webhookSecret" /></label>
+        <label>Return URL<input id="returnUrl" value="https://merchant.example.com/result" /></label>
       </div>
-      <div class="modal-actions-row"><button class="btn ghost" data-modal-close type="button">完成</button></div>
     </section>
   </div>
+  
+  <div id="opsModal" style="display:none;">
+    <div id="primaryActions"></div>
+    <select id="secondaryApi"></select>
+    <button id="runSecondaryBtn"></button>
+  </div>
+  <div id="observeModal" style="display:none;"></div>
+  <div id="statusPanelModal" style="display:none;"></div>
 
-  <div id="opsModal" class="modal hidden" aria-hidden="true">
-    <button class="modal-backdrop" data-modal-close type="button" aria-label="关闭更多操作弹窗"></button>
-    <section class="modal-card modal-card--compact" role="dialog" aria-modal="true" aria-labelledby="opsModalTitle">
-      <div class="modal-head">
-        <div><span class="eyebrow">OPERATIONS</span><h2 id="opsModalTitle">更多操作</h2></div>
-        <button class="icon-button" data-modal-close type="button" aria-label="关闭">×</button>
-      </div>
-      <div class="primary-actions" id="primaryActions">
-        <button class="action-btn" data-action="sale" type="button">收款</button>
-        <button class="action-btn" data-action="void" type="button">撤销</button>
-        <button class="action-btn" data-action="refund" type="button">退款</button>
-        <button class="action-btn" data-action="query" type="button">查单</button>
-      </div>
-      <div class="secondary-box">
-        <label>更多接口（二级菜单）<select id="secondaryApi"></select></label>
-        <button id="runSecondaryBtn" class="btn ghost" type="button">执行二级接口</button>
-      </div>
-    </section>
-  </div>
-
-  <div id="observeModal" class="modal hidden" aria-hidden="true">
-    <button class="modal-backdrop" data-modal-close type="button" aria-label="关闭响应与事件弹窗"></button>
-    <section class="modal-card modal-card--wide" role="dialog" aria-modal="true" aria-labelledby="observeModalTitle">
-      <div class="modal-head">
-        <div><span class="eyebrow">OBSERVABILITY</span><h2 id="observeModalTitle">响应与事件</h2></div>
-        <button class="icon-button" data-modal-close type="button" aria-label="关闭">×</button>
-      </div>
-      <div class="toolbar"><button id="rebuildBtn" class="btn ghost" type="button">按当前配置重建交易参数</button></div>
-      <p class="hint" id="endpointHint"></p>
-      <label>Terminal Event Notify URL（请求回调地址，固定）<input id="eventUrl" value="http://47.77.239.198/terminal-events/sunbay" readonly /></label>
-      <div class="toolbar">
-        <button id="subBtn" class="btn" type="button">连接实时状态流</button>
-        <button id="unsubBtn" class="btn ghost" type="button">断开实时状态流</button>
-        <button id="clearEventsBtn" class="btn ghost" type="button">清空事件流</button>
-      </div>
-      <label>网关响应<textarea id="responsePayload" rows="9" readonly></textarea></label>
-      <label>请求参数（高级）<textarea id="requestPayload" rows="9"></textarea></label>
-      <div class="hint">终端与通知事件</div>
-      <div id="eventLog" class="event-log"></div>
-      <div id="linkGroups" class="link-groups"></div>
-    </section>
-  </div>
-
-  <div id="statusModal" class="modal hidden" aria-hidden="true">
-    <button class="modal-backdrop" data-modal-close type="button" aria-label="关闭交易处理弹窗"></button>
-    <section class="modal-card modal-card--wide" role="dialog" aria-modal="true" aria-labelledby="statusModalTitle">
-      <div class="modal-head">
-        <div><span class="eyebrow">LIVE TRANSACTION</span><h2 id="statusModalTitle">交易处理中</h2></div>
-        <div class="modal-actions">
-          <button id="modalQueryTxnBtn" class="btn ghost" type="button">补充查询</button>
-          <button id="closeStatusModal" class="icon-button" data-modal-close type="button" aria-label="关闭">×</button>
-        </div>
-      </div>
-      <div class="modal-meta">
-        <div><span>订单号</span><strong id="modalRef">-</strong></div>
-        <div><span>请求流水</span><strong id="modalReq">-</strong></div>
-        <div><span>当前状态</span><strong id="modalState">等待中</strong></div>
-        <div><span>终端事件</span><strong id="modalTerminalEvent">等待事件</strong></div>
-        <div><span>通知结果</span><strong id="modalNotifyStatus">等待 transactionStatus</strong></div>
-      </div>
-      <p class="modal-guard">最终交易状态确认条件：<b>terminalEventNotifyUrl = TRANSACTION_ENDED</b> 且 <b>notifyUrl 返回 transactionStatus</b>。仅网关 HTTP 成功、查询结果或单个回调不会结束交易。</p>
-      <div class="lifecycle" id="loadingLifecycle">
-        <div class="loader-spinner"></div>
-        <div class="lifecycle-step active" id="currentEventStep">
-           <div class="step-title" id="currentEventTitle">拉起支付...</div>
-           <div class="step-sub" id="currentEventSub">等待终端响应</div>
-        </div>
-      </div>
-      <div id="modalTimeline" class="modal-timeline"></div>
-    </section>
-  </div>
   <script src="./main.js"></script>
+  <script>
+    document.getElementById('openDevConsoleBtn').addEventListener('click', function() {
+        document.getElementById('devConsole').classList.add('visible');
+    });
+    document.getElementById('closeDevConsoleBtn').addEventListener('click', function() {
+        document.getElementById('devConsole').classList.remove('visible');
+    });
+  </script>
 </body>
 </html>
