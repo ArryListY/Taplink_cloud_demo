@@ -3,19 +3,46 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SUNBAY Coffee Store Checkout</title>
+  <title>SUNBAY Coffee Store</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   
   <header class="store-header">
     <div class="header-inner">
-      <div class="logo">SUNBAY COFFEE</div>
-      <button id="openDevConsoleBtn" class="dev-btn" title="Developer Console">{}</button>
+      <div class="logo">
+         <span class="logo-icon">☀️</span> SUNBAY COFFEE
+      </div>
+      <button id="openDevConsoleBtn" class="dev-btn" title="Developer Console">&lt;/&gt;</button>
     </div>
   </header>
 
-  <main class="store-layout">
+  <!-- View 1: Menu Selection -->
+  <main id="menuView" class="store-layout">
+    <div class="hero-banner">
+      <h1>Order Ahead</h1>
+      <p>Freshly brewed and ready for pickup.</p>
+    </div>
+    
+    <h2 class="section-title">Menu</h2>
+    <div class="menu-grid" id="menuGrid"></div>
+  </main>
+
+  <!-- Floating Cart -->
+  <div id="floatingCart" class="floating-cart hidden">
+     <div class="floating-cart-inner">
+        <div class="cart-info">
+           <span id="cartCountBadge" class="cart-badge">0</span>
+           <span class="cart-label">Items selected</span>
+        </div>
+        <button id="goToCheckoutBtn" class="pay-button">View Cart - <span id="cartTotalFloat">$0.00</span></button>
+     </div>
+  </div>
+
+  <!-- View 2: Checkout -->
+  <main id="checkoutView" class="store-layout hidden">
+    <button id="backToMenuBtn" class="back-btn">&#8592; Back to Menu</button>
+    
     <div class="checkout-grid">
       <!-- Left Column: Customer Information -->
       <section class="checkout-left">
@@ -30,8 +57,10 @@
         <div class="info-section">
           <h3>Billing Address</h3>
           <div class="field-list">
-            <input type="text" placeholder="First Name" value="John" />
-            <input type="text" placeholder="Last Name" value="Doe" />
+            <div class="field-row">
+                <input type="text" placeholder="First Name" value="John" />
+                <input type="text" placeholder="Last Name" value="Doe" />
+            </div>
             <select><option>United States</option></select>
             <input type="text" placeholder="Address" value="123 Coffee St" />
             <div class="field-row">
@@ -59,7 +88,8 @@
       <section class="checkout-right">
         <div class="order-summary card">
           <h3>Order Summary</h3>
-          <div id="productList" class="product-list"></div>
+          <!-- The Cart Items go here -->
+          <div id="cartList" class="cart-list"></div>
           
           <div class="divider"></div>
           
@@ -68,7 +98,7 @@
             <span id="orderAmountText">$0.00</span>
           </div>
           <div class="summary-line">
-            <span>Tax (Estimated)</span>
+            <span>Tax (Estimated 8%)</span>
             <span id="taxAmountText">$0.00</span>
           </div>
           
@@ -79,7 +109,7 @@
             <span id="totalAmountText">$0.00</span>
           </div>
           
-          <button id="runBtn" class="pay-button" type="button">Pay <span id="payBtnAmount">$0.00</span></button>
+          <button id="runBtn" class="pay-button" type="button" disabled>Pay <span id="payBtnAmount">$0.00</span></button>
           
           <!-- Hidden auth button to keep logic valid -->
           <button id="runAuthBtn" style="display:none;" type="button">Auth</button>
@@ -103,7 +133,7 @@
       </div>
       
       <div id="successView" style="display:none;" class="success-view">
-         <div class="success-icon">✓</div>
+         <div class="success-icon">&#10003;</div>
          <h2>Payment Successful</h2>
          <p>Order #<span id="modalRef">-</span></p>
          <div class="success-amount" id="successAmountText">$0.00</div>
@@ -115,7 +145,7 @@
       </div>
       
       <div id="errorView" style="display:none;" class="error-view">
-         <div class="error-icon">×</div>
+         <div class="error-icon">&#10005;</div>
          <h2>Payment Failed</h2>
          <p id="errorMsgText">Transaction declined or cancelled.</p>
          <button class="primary-btn" data-modal-close>Try Again</button>
@@ -137,7 +167,7 @@
   <aside id="devConsole" class="dev-console">
     <div class="dev-console-header">
         <h3>Developer Console</h3>
-        <button id="closeDevConsoleBtn" class="dev-btn">×</button>
+        <button id="closeDevConsoleBtn" class="dev-btn">&#10005;</button>
     </div>
     <div class="dev-console-body">
         
@@ -177,7 +207,6 @@
         </div>
 
         <div class="dev-section" style="display:none;">
-            <!-- Hidden payload textareas so logic continues to work -->
             <textarea id="responsePayload"></textarea>
             <textarea id="requestPayload"></textarea>
             <div id="linkGroups"></div>
@@ -194,7 +223,7 @@
     <section class="modal-card modal-card--wide" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h2>Configuration (Dev)</h2>
-        <button class="icon-button" data-modal-close type="button">×</button>
+        <button class="icon-button" data-modal-close type="button">&#10005;</button>
       </div>
       <div class="field-grid">
         <label>Backend URL<input id="backendUrl" value="http://127.0.0.1:8000" /></label>

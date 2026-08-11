@@ -268,10 +268,10 @@ const LINK_GROUPS = [
 ];
 
 const PRODUCTS = [
-  { id: "p1", name: "Americano", priceCents: 550, qty: 1 },
-  { id: "p2", name: "Blueberry Muffin", priceCents: 420, qty: 0 },
-  { id: "p3", name: "Croissant", priceCents: 390, qty: 0 },
-  { id: "p4", name: "Cold Brew", priceCents: 680, qty: 0 },
+  { id: "p1", name: "Americano", icon: "☕️", desc: "Fresh pulled espresso with hot water", priceCents: 550, qty: 0 },
+  { id: "p2", name: "Blueberry Muffin", icon: "🧁", desc: "Freshly baked every morning", priceCents: 420, qty: 0 },
+  { id: "p3", name: "Croissant", icon: "🥐", desc: "Classic buttery French pastry", priceCents: 390, qty: 0 },
+  { id: "p4", name: "Cold Brew", icon: "🧊", desc: "Slow steeped for 24 hours", priceCents: 680, qty: 0 },
 ];
 
 const LIFECYCLE_PHASES = ["PLACED", "PRESENTED", "PROCESSING", "RESULT"];
@@ -505,25 +505,49 @@ function rebuildRequest(apiId = selectedApiId) {
 }
 
 function renderProducts() {
-  el.productList.innerHTML = "";
+  if (el.menuGrid) el.menuGrid.innerHTML = "";
+  if (el.cartList) el.cartList.innerHTML = "";
+
   for (const p of PRODUCTS) {
-    const node = document.createElement("div");
-    node.className = "product";
-    node.innerHTML = `
-      <div class="product-info">
-        <div class="product-icon">☕️</div>
-        <div>
-           <div class="product-name">${p.name}</div>
-           <div class="stepper-mini">
+    if (el.menuGrid) {
+      const node = document.createElement("div");
+      node.className = "menu-card";
+      node.innerHTML = `
+        <div class="menu-icon">${p.icon}</div>
+        <div class="menu-info">
+           <h4>${p.name}</h4>
+           <p>${p.desc}</p>
+           <div class="menu-action">
+              <span class="price">${formatMoney(p.priceCents)}</span>
+              ${p.qty === 0 
+                  ? `<button class="add-btn" data-op="add" data-id="${p.id}" type="button">Add</button>` 
+                  : `<div class="stepper-ui"><button data-op="sub" data-id="${p.id}" type="button">-</button><span>${p.qty}</span><button data-op="add" data-id="${p.id}" type="button">+</button></div>`
+              }
+           </div>
+        </div>
+      `;
+      el.menuGrid.appendChild(node);
+    }
+    
+    if (el.cartList && p.qty > 0) {
+      const cnode = document.createElement("div");
+      cnode.className = "cart-item";
+      cnode.innerHTML = `
+          <div class="cart-item-info">
+             <div class="cart-item-icon">${p.icon}</div>
+             <div>
+                <div class="cart-item-name">${p.name}</div>
+                <div class="cart-item-price">${formatMoney(p.priceCents)}</div>
+             </div>
+          </div>
+          <div class="stepper-mini">
               <button data-op="sub" data-id="${p.id}" type="button">-</button>
               <span>${p.qty}</span>
               <button data-op="add" data-id="${p.id}" type="button">+</button>
-           </div>
-        </div>
-      </div>
-      <div class="product-price">${formatMoney(p.priceCents)}</div>
-    `;
-    el.productList.appendChild(node);
+          </div>
+      `;
+      el.cartList.appendChild(cnode);
+    }
   }
 }
 
@@ -1052,9 +1076,9 @@ async function runRequest(apiId = selectedApiId) {
 }
 
 function bindEvents() {
-  el.productList.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement) || target.tagName !== "BUTTON") return;
+  const handleProductClick = (event) => {
+    const target = event.target.closest("button[data-op]");
+    if (!target) return;
     const product = PRODUCTS.find((p) => p.id === target.dataset.id);
     if (!product) return;
     if (target.dataset.op === "add") product.qty += 1;
@@ -1062,7 +1086,28 @@ function bindEvents() {
     renderProducts();
     computeAmount();
     rebuildRequest(selectedApiId);
-  });
+  };
+  
+  if(el.menuGrid) el.menuGrid.addEventListener("click", handleProductClick);
+  if(el.cartList) el.cartList.addEventListener("click", handleProductClick);
+
+  if(el.goToCheckoutBtn) {
+      el.goToCheckoutBtn.addEventListener("click", () => {
+          el.menuView.classList.add("hidden");
+          el.floatingCart.classList.add("hidden");
+          el.checkoutView.classList.remove("hidden");
+          window.scrollTo(0, 0);
+      });
+  }
+
+  if(el.backToMenuBtn) {
+      el.backToMenuBtn.addEventListener("click", () => {
+          el.checkoutView.classList.add("hidden");
+          el.menuView.classList.remove("hidden");
+          computeAmount(); 
+          window.scrollTo(0, 0);
+      });
+  }
 
   el.primaryActions.addEventListener("click", (event) => {
     const target = event.target;
