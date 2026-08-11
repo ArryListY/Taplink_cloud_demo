@@ -667,7 +667,20 @@ async function executeTipAdjustFromDetail(origTxn) {
   if (tipAmount <= 0) return;
   const txn = createTxnRecord(TxnType.TIP_ADJUST); txn.totalCents = tipAmount; startTxnProgress(txn);
   const payload = { ...basePayload(), originalTransactionId: origTxn.transactionId, tipAmount, pushToTerminal: true };
-  try { const r = await callProxy('POST', API_PATHS.TIP_ADJUST, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
+  try {
+    const r = await callProxy('POST', API_PATHS.TIP_ADJUST, payload);
+    const code = extractCodeFromResponse(r.data);
+    const msg = extractMsgFromResponse(r.data);
+    logEvent(`Tip Adjust: code=${code || '0'}, msg=${msg}`);
+    if (code && code !== '0') {
+      txn.status = TxnStatus.FAILED; txn.errorMessage = `[${code}] ${msg}`;
+    } else {
+      txn.status = TxnStatus.SUCCESS;
+      txn.queryData = r.data?.data?.data || r.data?.data || r.data;
+      txn.webhookData = txn.queryData;
+    }
+    txn.updatedAt = Date.now(); saveTransactions(); stopRecentEventPolling(); renderProgress(); updateDevConsole();
+  } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
 // --- Post Auth (Capture) from Detail ---
@@ -849,6 +862,8 @@ function closeModal(m) { if (m) m.classList.add('hidden'); }
 // ============================================================
 function bindEvents() {
   el.menuGrid?.addEventListener('click', (e) => { const b = e.target.closest('button[data-op]'); if (!b) return; const pid = b.dataset.id; if (b.dataset.op === 'add') cart[pid] = (cart[pid] || 0) + 1; if (b.dataset.op === 'sub') { cart[pid] = Math.max(0, (cart[pid] || 0) - 1); if (!cart[pid]) delete cart[pid]; } renderMenu(); });
+  // Logo click → back to menu
+  document.getElementById('logoHome')?.addEventListener('click', () => navigateTo(AppView.MENU));
   el.goToCheckoutBtn?.addEventListener('click', () => navigateTo(AppView.CHECKOUT));
   el.backToMenuBtn?.addEventListener('click', () => navigateTo(AppView.MENU));
   // Transaction type select
