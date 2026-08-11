@@ -47,10 +47,12 @@ const API_PATHS = {
   TIP_ADJUST: '/v1/semi-integration/transaction/tip-adjust',
   ABORT: '/v1/semi-integration/transaction/abort',
   QUERY: '/v1/transaction/query',
-  BATCH_QUERY: '/v1/settlement/batch-query',
-  BATCH_CLOSE: '/v1/settlement/batch-close',
+  BATCH_QUERY: '/v1/semi-integration/settlement/batch-query',
+  BATCH_CLOSE: '/v1/semi-integration/settlement/batch-close',
   CHECKOUT_CREATE: '/v1/checkout/create-session',
   CHECKOUT_EXPIRE: '/v1/checkout/expire-session',
+  MERCHANT_QUERY: '/v1/merchant/query',
+  MERCHANT_TERMINALS: '/v1/merchant/terminals/query',
 };
 
 // === App State ===
@@ -334,6 +336,12 @@ function renderDetail() {
   el.detailResult.innerHTML = `<div class="result-icon ${iconClass}">${iconChar}</div><h2>${txn.type} - ${title}</h2>${txn.errorMessage ? `<p class="text-muted">${txn.errorMessage}</p>` : ''}<div class="result-amount">${formatMoney(txn.totalCents || 0)}</div>`;
   const fields = [['Type', txn.type], ['Status', txn.status], ['Order ID', txn.orderId || '-'], ['Request ID', txn.requestId || '-'], ['Transaction ID', txn.transactionId || '-'], ['Channel', txn.channel || '-'], ['Created', formatDate(txn.createdAt)]];
   el.detailFields.innerHTML = fields.map(([l, v]) => `<div class="detail-field"><span class="detail-field-label">${l}</span><span class="detail-field-value">${v}</span></div>`).join('');
+
+  // Show webhook response data if available
+  if (txn.webhookData) {
+    const webhookHtml = `<div class="detail-webhook"><h3>Webhook Response</h3><pre class="webhook-json">${JSON.stringify(txn.webhookData, null, 2)}</pre></div>`;
+    el.detailFields.insertAdjacentHTML('beforeend', webhookHtml);
+  }
 
   // Build actions based on transaction type & status
   let actions = '';
@@ -622,6 +630,48 @@ async function executeUnreferencedRefund() {
   try { const r = await callProxy('POST', API_PATHS.REFUND, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
+// --- Merchant Query ---
+async function queryMerchant() {
+  const cfg = getConfig();
+  const payload = { appId: cfg.appId, merchantId: cfg.merchantId };
+  try {
+    const r = await callProxy('GET', API_PATHS.MERCHANT_QUERY, payload);
+    const code = extractCodeFromResponse(r.data);
+    if (code && code !== '0') { showMerchantResult(`Error: [${code}] ${extractMsgFromResponse(r.data)}`); return; }
+    const data = r.data?.data?.data || r.data?.data || r.data;
+    showMerchantResult(JSON.stringify(data, null, 2));
+    logEvent('Merchant query OK');
+  } catch (e) { showMerchantResult(`Failed: ${e.message}`); }
+}
+
+// --- Merchant Terminals Query ---
+async function queryMerchantTerminals() {
+  const cfg = getConfig();
+  const payload = { appId: cfg.appId, merchantId: cfg.merchantId };
+  try {
+    const r = await callProxy('GET', API_PATHS.MERCHANT_TERMINALS, payload);
+    const code = extractCodeFromResponse(r.data);
+    if (code && code !== '0') { showMerchantResult(`Error: [${code}] ${extractMsgFromResponse(r.data)}`); return; }
+    const data = r.data?.data?.data || r.data?.data || r.data;
+    showMerchantResult(JSON.stringify(data, null, 2));
+    logEvent('Terminals query OK');
+  } catch (e) { showMerchantResult(`Failed: ${e.message}`); }
+}
+
+function showMerchantResult(text) {
+  let panel = document.getElementById('merchantResultPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'merchantResultPanel';
+    panel.className = 'merchant-result-panel';
+    panel.innerHTML = `<div class="merchant-result-header"><h3>Query Result</h3><button id="closeMerchantResult" class="icon-button">✕</button></div><pre class="merchant-result-json"></pre>`;
+    document.body.appendChild(panel);
+    document.getElementById('closeMerchantResult')?.addEventListener('click', () => panel.classList.add('hidden'));
+  }
+  panel.querySelector('.merchant-result-json').textContent = text;
+  panel.classList.remove('hidden');
+}
+
 // ============================================================
 // SSE Event Stream
 // ============================================================
@@ -664,6 +714,9 @@ function handleWebhookEvent(parsed) {
   if (snap.transactionId && activeTxn) activeTxn.transactionId = snap.transactionId;
   if (!snap.transactionStatus) return;
   activeTxn.notifyStatus = normalizeStatus(snap.transactionStatus);
+  // Save full webhook data for detail display
+  activeTxn.webhookData = body;
+  saveTransactions();
   logEvent(`[webhook] status=${snap.transactionStatus}`);
   checkFinalState();
 }
@@ -746,6 +799,8 @@ function bindEvents() {
   el.queryTxnBtn?.addEventListener('click', () => { if (activeTxn) runQuery(activeTxn.requestId); });
   el.openConfigModalBtn?.addEventListener('click', () => openModal(el.configModal));
   el.configModal?.addEventListener('click', (e) => { if (e.target.closest('[data-modal-close]')) closeModal(el.configModal); });
+  document.getElementById('queryMerchantBtn')?.addEventListener('click', queryMerchant);
+  document.getElementById('queryTerminalsBtn')?.addEventListener('click', queryMerchantTerminals);
   ['backendUrl','envType','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(id => { const n = el[id]; if (n) { n.addEventListener('input', saveConfig); n.addEventListener('change', saveConfig); } });
   ['tipEnabled','tipSuggestionsEnabled','taxEnabled','signatureEnabled'].forEach(id => { document.getElementById(id)?.addEventListener('change', () => { toggleSubSettings(); saveSettings(); }); });
   ['tipMode','tipOnScreenTip','tipWithTax','tipFeeMode','tipSuggestion1','tipSuggestion2','tipSuggestion3','taxRate','printReceipt','signatureMode','signatureThresholdEnabled','signatureThreshold'].forEach(id => { const n = document.getElementById(id); if (n) { n.addEventListener('change', saveSettings); n.addEventListener('input', saveSettings); } });

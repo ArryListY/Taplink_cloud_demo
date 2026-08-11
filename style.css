@@ -236,3 +236,14 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
   .field-grid { grid-template-columns: 1fr; }
   .dev-console { width: 100%; }
 }
+
+/* Merchant Result Panel */
+.merchant-result-panel { position: fixed; bottom: 20px; right: 20px; width: 420px; max-width: 90vw; max-height: 60vh; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); z-index: 900; display: flex; flex-direction: column; overflow: hidden; }
+.merchant-result-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.merchant-result-header h3 { font-size: 14px; margin: 0; }
+.merchant-result-json { margin: 0; padding: 16px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: auto; flex: 1; background: #1A1A1A; color: #E5E5E5; white-space: pre-wrap; word-break: break-all; }
+
+/* Webhook data in detail view */
+.detail-webhook { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
+.detail-webhook h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
+.webhook-json { margin: 0; padding: 12px; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #1A1A1A; color: #E5E5E5; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
