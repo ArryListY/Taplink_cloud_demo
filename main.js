@@ -333,10 +333,10 @@ const el = {
   modalNotifyStatus: document.getElementById("modalNotifyStatus"),
   modalTimeline: document.getElementById("modalTimeline"),
   statusModalTitle: document.getElementById("statusModalTitle"),
-  stepPlaced: document.getElementById("stepPlaced"),
-  stepPresented: document.getElementById("stepPresented"),
-  stepProcessing: document.getElementById("stepProcessing"),
-  stepResult: document.getElementById("stepResult"),
+  loadingLifecycle: document.getElementById("loadingLifecycle"),
+  currentEventStep: document.getElementById("currentEventStep"),
+  currentEventTitle: document.getElementById("currentEventTitle"),
+  currentEventSub: document.getElementById("currentEventSub"),
   openStatusModalBtn: document.getElementById("openStatusModalBtn"),
   openConfigModalBtn: document.getElementById("openConfigModalBtn"),
   openOpsModalBtn: document.getElementById("openOpsModalBtn"),
@@ -562,43 +562,28 @@ function logEvent(text) {
   el.eventLog.prepend(item);
 }
 
-function setStepState(node, state) {
-  if (!node) return;
-  node.classList.remove("active", "done", "fail");
-  if (state) node.classList.add(state);
-}
-
-function setLifecyclePhase(phase, failed = false) {
-  const idx = LIFECYCLE_PHASES.indexOf(phase);
-  const steps = [el.stepPlaced, el.stepPresented, el.stepProcessing, el.stepResult];
-  steps.forEach((node, i) => {
-    if (idx < 0) {
-      setStepState(node, "");
-      return;
-    }
-    if (i < idx) {
-      setStepState(node, "done");
-      return;
-    }
-    if (i === idx) {
-      if (phase === "RESULT") {
-        setStepState(node, failed ? "fail" : "done");
-      } else {
-        setStepState(node, "active");
-      }
-      return;
-    }
-    setStepState(node, "");
-  });
-}
-
 function applyLifecycleByEventType(eventType) {
   const et = String(eventType || "").toUpperCase();
   if (!et) return;
-  if (et === "ORDER_RECEIVED") return setLifecyclePhase("PLACED");
-  if (et === "PAYMENT_PRESENTED" || et === "PIN_ENTERING") return setLifecyclePhase("PRESENTED");
-  if (["PAYMENT_PROCESSING", "SIGNATURE_CAPTURED", "PRINTING", "PRINT_COMPLETED"].includes(et)) return setLifecyclePhase("PROCESSING");
-  if (et === "TRANSACTION_ENDED") return setLifecyclePhase("RESULT");
+  
+  if (el.currentEventTitle) {
+      el.currentEventTitle.textContent = et;
+  }
+  
+  const descMap = {
+      "ORDER_RECEIVED": "等待顾客操作",
+      "PAYMENT_PRESENTED": "请顾客刷卡/挥卡/插卡",
+      "PIN_ENTERING": "正在输入密码",
+      "PAYMENT_PROCESSING": "支付处理中",
+      "SIGNATURE_CAPTURED": "签名已采集",
+      "PRINTING": "正在打印小票",
+      "PRINT_COMPLETED": "打印完成",
+      "TRANSACTION_ENDED": "流程结束，查询最终结果..."
+  };
+  
+  if (el.currentEventSub) {
+      el.currentEventSub.textContent = descMap[et] || "处理中";
+  }
 }
 
 function isFinalTxnStatus(state) {
@@ -632,42 +617,29 @@ function updateTxnStatus(state, payload = {}) {
   el.modalReq.textContent = el.txnReq.textContent;
 
   if (isSuccess) {
-    if (!hasRequiredFinalCallbacks()) {
-      el.txnState.textContent = `已收到结果(${status})，等待双回调确认`;
-      el.txnStatusPanel.className = "txn-status processing";
-      el.modalState.textContent = `已收到结果(${status})，等待双回调确认`;
-      el.statusModalTitle.textContent = "等待交易确认";
-      return;
-    }
     el.txnState.textContent = `已完成(${status})`;
     el.txnStatusPanel.className = "txn-status success";
     el.modalState.textContent = `已完成(${status})`;
-    el.statusModalTitle.textContent = "交易完成";
-    setLifecyclePhase("RESULT", false);
+    el.statusModalTitle.textContent = "交易成功";
+    if (el.loadingLifecycle) el.loadingLifecycle.style.display = "none";
+    if (el.currentEventStep) {
+        el.currentEventStep.className = "lifecycle-step done";
+        if (el.currentEventTitle) el.currentEventTitle.textContent = "交易成功";
+        if (el.currentEventSub) el.currentEventSub.textContent = status;
+    }
     return;
   }
   if (isFailed) {
-    if (!hasRequiredFinalCallbacks()) {
-      el.txnState.textContent = `已收到结果(${status})，等待双回调确认`;
-      el.txnStatusPanel.className = "txn-status processing";
-      el.modalState.textContent = `已收到结果(${status})，等待双回调确认`;
-      el.statusModalTitle.textContent = "等待交易确认";
-      return;
-    }
     el.txnState.textContent = `失败/终止(${status})`;
     el.txnStatusPanel.className = "txn-status failed";
     el.modalState.textContent = `失败/终止(${status})`;
     el.statusModalTitle.textContent = "交易失败";
-    setLifecyclePhase("RESULT", true);
-    return;
-  }
-
-  if (status === "TERMINAL_ENDED") {
-    el.txnState.textContent = "终端已结束(待交易结果回调)";
-    el.txnStatusPanel.className = "txn-status processing";
-    el.modalState.textContent = "终端已结束(待交易结果回调)";
-    el.statusModalTitle.textContent = "等待最终结果";
-    setLifecyclePhase("RESULT", false);
+    if (el.loadingLifecycle) el.loadingLifecycle.style.display = "none";
+    if (el.currentEventStep) {
+        el.currentEventStep.className = "lifecycle-step fail";
+        if (el.currentEventTitle) el.currentEventTitle.textContent = "交易失败";
+        if (el.currentEventSub) el.currentEventSub.textContent = status;
+    }
     return;
   }
 
@@ -675,25 +647,22 @@ function updateTxnStatus(state, payload = {}) {
   el.txnStatusPanel.className = "txn-status processing";
   el.modalState.textContent = status ? `进行中(${status})` : "处理中";
   el.statusModalTitle.textContent = "交易处理中";
+  if (el.loadingLifecycle) el.loadingLifecycle.style.display = "flex";
 }
 
 function applyNotifyFinalState(state, snap, webhookEventType) {
   const normalizedState = String(state || "").toUpperCase();
-  if (!activeTxn || !activeTxn.terminalEnded || !isFinalTxnStatus(normalizedState)) {
-    appendModalTimeline(`notifyUrl 已收到 transactionStatus=${normalizedState || "-"}，但仍等待双回调条件满足`);
-    return;
-  }
 
   activeTxn.notifyStatus = normalizedState;
   updateTxnStatus(normalizedState, {
     referenceOrderId: snap.referenceOrderId || activeTxn.referenceOrderId || "-",
     transactionRequestId: snap.transactionRequestId || activeTxn.transactionRequestId || "-",
   });
-  appendModalTimeline(`notifyUrl 最终状态 -> ${normalizedState} (reqId=${snap.transactionRequestId || "-"}, eventType=${webhookEventType})`);
+  appendModalTimeline(`收到服务器状态回调 -> ${normalizedState} (reqId=${snap.transactionRequestId || "-"}, eventType=${webhookEventType})`);
   logEvent(`[notify最终状态] reqId=${snap.transactionRequestId || "-"} eventType=${webhookEventType} status=${normalizedState}`);
   activeTxn.finalFromNotify = true;
   stopRecentEventPolling();
-  appendModalTimeline("已满足 TRANSACTION_ENDED + transactionStatus，交易确认结束");
+  appendModalTimeline("交易由服务器状态回调或查询结果结束");
 }
 
 function resetModalForTxn(payload) {
@@ -703,7 +672,7 @@ function resetModalForTxn(payload) {
   el.modalTerminalEvent.textContent = "等待事件";
   el.modalNotifyStatus.textContent = "等待 transactionStatus";
   el.modalTimeline.innerHTML = "";
-  setLifecyclePhase("PLACED");
+  
   appendModalTimeline("已发起交易，等待终端和回调状态...");
   showStatusModal();
 }
@@ -876,19 +845,7 @@ function handleEventData(raw) {
 
       if (activeTxn && progressState === "TERMINAL_ENDED") {
         activeTxn.terminalEnded = true;
-        appendModalTimeline("终端事件已结束，等待 notifyUrl 回调最终交易结果");
-        if (activeTxn.pendingNotifyState) {
-          applyNotifyFinalState(
-            activeTxn.pendingNotifyState,
-            {
-              transactionRequestId: activeTxn.transactionRequestId,
-              referenceOrderId: activeTxn.referenceOrderId,
-            },
-            activeTxn.pendingNotifyEventType || "TRANSACTION_RESULT",
-          );
-          activeTxn.pendingNotifyState = "";
-          activeTxn.pendingNotifyEventType = "";
-        }
+        appendModalTimeline("终端事件已结束，等待最终交易结果");
       }
     } else if (eventType || requestId || transactionId) {
       logEvent(`[terminal忽略] 当前交易reqId=${activeTxn?.transactionRequestId || "-"} 收到reqId=${requestId || "-"} txnId=${transactionId || "-"} eventType=${eventType || "-"}`);
@@ -925,7 +882,7 @@ function handleEventData(raw) {
       el.modalNotifyStatus.textContent = state;
       const webhookEventType = extractWebhookEventType(parsed);
 
-      if (activeTxn && !activeTxn.terminalEnded) {
+      if (false) {
         activeTxn.pendingNotifyState = state;
         activeTxn.pendingNotifyEventType = webhookEventType;
         appendModalTimeline(`notifyUrl transactionStatus -> ${state} (reqId=${snap.transactionRequestId || "-"})`);
