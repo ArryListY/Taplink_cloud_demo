@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment Result - SUNBAY Coffee</title>
+  <style>
+    :root {
+      --primary: #F05C35;
+      --background: #FDFBF7;
+      --surface: #FFFFFF;
+      --border: #E8E3DF;
+      --text-main: #2A2421;
+      --text-muted: #756D69;
+      --success: #1E9E61;
+      --success-bg: #D1FAE5;
+      --error: #E03B3B;
+      --error-bg: #FEE2E2;
+      --warning: #F59E0B;
+      --warning-bg: #FEF3C7;
+    }
+    * { box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { margin: 0; background: var(--background); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; max-width: 480px; width: 100%; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.04); }
+    .logo { font-size: 18px; font-weight: 800; color: var(--primary); margin-bottom: 32px; }
+    .result-icon { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 20px; }
+    .result-icon.success { background: var(--success-bg); color: var(--success); }
+    .result-icon.error { background: var(--error-bg); color: var(--error); }
+    .result-icon.pending { background: var(--warning-bg); color: var(--warning); }
+    h1 { font-size: 22px; margin-bottom: 8px; }
+    .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+    .detail-list { text-align: left; margin: 24px 0; padding: 16px; background: #F8F5F1; border-radius: 12px; }
+    .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: var(--text-muted); }
+    .detail-value { font-weight: 600; word-break: break-all; max-width: 55%; text-align: right; }
+    .actions { display: grid; gap: 10px; margin-top: 24px; }
+    .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; text-align: center; transition: background 0.2s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: #D9461F; }
+    .btn-ghost { background: var(--surface); color: var(--text-main); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: #F8F5F1; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">☀️ SUNBAY COFFEE</div>
+    <div class="result-icon" id="resultIcon">⏳</div>
+    <h1 id="resultTitle">Processing...</h1>
+    <p class="subtitle" id="resultSubtitle">Checking payment status</p>
+    <div class="detail-list" id="detailList"></div>
+    <div class="actions">
+      <a href="/" class="btn btn-primary">Back to Store</a>
+      <button class="btn btn-ghost" id="viewRawBtn" type="button">Show Raw Parameters</button>
+    </div>
+    <pre id="rawParams" style="display:none; text-align:left; font-size:11px; background:#1A1A1A; color:#E5E5E5; padding:12px; border-radius:8px; margin-top:16px; overflow-x:auto; white-space:pre-wrap;"></pre>
+  </div>
+
+  <script>
+    // Parse URL parameters (checkout provider redirects back with query params)
+    const params = new URLSearchParams(window.location.search);
+    const allParams = Object.fromEntries(params.entries());
+
+    // Common fields from checkout return
+    const status = (params.get('status') || params.get('transactionStatus') || params.get('result') || '').toUpperCase();
+    const transactionId = params.get('transactionId') || params.get('transaction_id') || '';
+    const requestId = params.get('transactionRequestId') || params.get('transaction_request_id') || '';
+    const orderId = params.get('referenceOrderId') || params.get('reference_order_id') || '';
+    const sessionId = params.get('sessionId') || params.get('session_id') || '';
+    const amount = params.get('amount') || params.get('totalAmount') || '';
+
+    // Determine result state
+    const isSuccess = ['S', 'SUCCESS', 'APPROVED', 'COMPLETED', 'PAID'].includes(status);
+    const isFailed = ['F', 'FAILED', 'DECLINED', 'CANCELLED', 'EXPIRED', 'VOIDED'].includes(status);
+
+    const icon = document.getElementById('resultIcon');
+    const title = document.getElementById('resultTitle');
+    const subtitle = document.getElementById('resultSubtitle');
+
+    if (isSuccess) {
+      icon.className = 'result-icon success';
+      icon.textContent = '✓';
+      title.textContent = 'Payment Successful';
+      subtitle.textContent = 'Your order has been confirmed.';
+    } else if (isFailed) {
+      icon.className = 'result-icon error';
+      icon.textContent = '✕';
+      title.textContent = 'Payment Failed';
+      subtitle.textContent = status === 'EXPIRED' ? 'The checkout session has expired.' : 'The payment was not completed.';
+    } else {
+      icon.className = 'result-icon pending';
+      icon.textContent = '⏳';
+      title.textContent = status ? `Status: ${status}` : 'Payment Processing';
+      subtitle.textContent = 'The payment result is being confirmed.';
+    }
+
+    // Show details
+    const details = [];
+    if (transactionId) details.push(['Transaction ID', transactionId]);
+    if (requestId) details.push(['Request ID', requestId]);
+    if (orderId) details.push(['Order ID', orderId]);
+    if (sessionId) details.push(['Session ID', sessionId]);
+    if (amount) details.push(['Amount', amount]);
+    if (status) details.push(['Status', status]);
+
+    const detailList = document.getElementById('detailList');
+    if (details.length > 0) {
+      detailList.innerHTML = details.map(([label, value]) =>
+        `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${value}</span></div>`
+      ).join('');
+    } else {
+      detailList.innerHTML = '<div class="detail-row"><span class="detail-label">No parameters received</span><span class="detail-value">-</span></div>';
+    }
+
+    // Raw params toggle
+    const rawEl = document.getElementById('rawParams');
+    rawEl.textContent = JSON.stringify(allParams, null, 2);
+    document.getElementById('viewRawBtn').addEventListener('click', () => {
+      rawEl.style.display = rawEl.style.display === 'none' ? 'block' : 'none';
+    });
+  </script>
+</body>
+</html>

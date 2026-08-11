@@ -380,12 +380,14 @@ function renderProgress() {
     if (el.progressSubtitle) el.progressSubtitle.textContent = 'Transaction completed.';
     if (spinner) { spinner.classList.add('done'); spinner.classList.remove('error'); }
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
+    removeCheckoutLink();
     showViewDetailBtn();
   } else if (status === TxnStatus.FAILED) {
     if (el.progressTitle) el.progressTitle.textContent = 'Payment Failed';
     if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.errorMessage || 'Transaction was declined or aborted.';
     if (spinner) { spinner.classList.add('error'); spinner.classList.remove('done'); }
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
+    removeCheckoutLink();
     showViewDetailBtn();
   } else {
     if (el.progressTitle) el.progressTitle.textContent = 'Processing Payment';
@@ -417,6 +419,24 @@ function removeViewDetailBtn() {
 
 function addTimelineItem(text) {
   logEvent(text);
+}
+
+function showCheckoutLink(url) {
+  removeCheckoutLink();
+  const container = document.createElement('div');
+  container.id = 'checkoutLinkContainer';
+  container.className = 'checkout-link-container';
+  container.innerHTML = `
+    <p class="checkout-link-label">Payment page is ready:</p>
+    <a href="${url}" target="_blank" rel="noopener noreferrer" class="checkout-link-btn">Open Checkout Page ↗</a>
+    <p class="checkout-link-url">${url}</p>`;
+  // Insert after progress-animation
+  const animation = el.progressView?.querySelector('.progress-animation');
+  if (animation) animation.after(container);
+}
+
+function removeCheckoutLink() {
+  document.getElementById('checkoutLinkContainer')?.remove();
 }
 
 // --- Detail Rendering ---
@@ -678,6 +698,10 @@ async function executeOnlineCheckout() {
   startRecentEventPolling();
   updateDevConsole();
 
+  // Build merchantReturnUrl: use our own return page so user can come back to the demo
+  const returnBaseUrl = `${window.location.origin}/return.html`;
+  const merchantReturnUrl = cfg.returnUrl || returnBaseUrl;
+
   const payload = {
     appId: cfg.appId,
     merchantId: cfg.merchantId,
@@ -686,7 +710,7 @@ async function executeOnlineCheckout() {
     amount: txn.amount,
     description,
     productList,
-    merchantReturnUrl: cfg.returnUrl,
+    merchantReturnUrl,
     notifyUrl: FIXED_NOTIFY_WEBHOOK_URL,
     terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL,
   };
@@ -704,6 +728,13 @@ async function executeOnlineCheckout() {
     const nodes = collectPlainObjects(result.data);
     for (const node of nodes) {
       if (node.checkoutUrl) { txn.checkoutUrl = node.checkoutUrl; break; }
+      if (node.sessionId) { txn.sessionId = node.sessionId; break; }
+    }
+
+    // Show checkout link on progress page
+    if (txn.checkoutUrl) {
+      showCheckoutLink(txn.checkoutUrl);
+      if (el.progressSubtitle) el.progressSubtitle.textContent = 'Checkout session created. Please complete payment.';
     }
 
     updateDevConsole();
