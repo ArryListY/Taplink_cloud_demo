@@ -428,7 +428,7 @@ async function callProxy(method, path, payload, query = {}) {
     query: method === 'GET' ? payload : query,
   };
 
-  const response = await fetch(`${cfg.backendUrl}/api/proxy`, {
+  const response = await fetch(`${cfg.backendUrl || window.location.origin}/api/proxy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -827,7 +827,7 @@ function connectEventStream() {
   if (eventSource && eventSource.readyState !== EventSource.CLOSED) return;
   const cfg = getConfig();
   try {
-    eventSource = new EventSource(`${cfg.backendUrl}/api/events/stream`);
+    eventSource = new EventSource(`${cfg.backendUrl || window.location.origin}/api/events/stream`);
     eventSource.onopen = () => setEventBadge('connected');
     eventSource.onerror = () => setEventBadge('error');
     eventSource.onmessage = (e) => handleEventData(e.data);
