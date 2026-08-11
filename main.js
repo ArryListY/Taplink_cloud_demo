@@ -37,7 +37,7 @@ function initElements() {
     'menuView', 'checkoutView', 'progressView', 'detailView', 'historyView',
     'menuGrid', 'floatingCart', 'cartCountBadge', 'cartTotalFloat', 'goToCheckoutBtn',
     'backToMenuBtn', 'checkoutCartList', 'checkoutSubtotal', 'checkoutTax', 'checkoutTotal', 'payBtn', 'payBtnAmount',
-    'progressType', 'progressAmount', 'progressTitle', 'progressSubtitle', 'progressTimeline', 'abortBtn',
+    'progressType', 'progressAmount', 'progressTitle', 'progressSubtitle', 'abortBtn',
     'detailResult', 'detailFields', 'detailActions',
     'historyBackBtn', 'historyFilters', 'historyList', 'historyEmpty', 'historyBtn',
     'devConsole', 'openDevConsoleBtn', 'closeDevConsoleBtn',
@@ -152,6 +152,107 @@ function saveTransactions() {
   try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(transactions)); } catch { /* ignore */ }
 }
 
+// === Transaction Settings (Tip, Tax, Print, Signature) ===
+const SETTINGS_STORAGE_KEY = 'taplink_cloud_demo_settings_v1';
+
+function getSettings() {
+  return {
+    tipEnabled: document.getElementById('tipEnabled')?.checked || false,
+    tipMode: document.getElementById('tipMode')?.value || 'ON_SALE',
+    tipOnScreenTip: document.getElementById('tipOnScreenTip')?.checked || true,
+    tipWithTax: document.getElementById('tipWithTax')?.checked || false,
+    tipSuggestionsEnabled: document.getElementById('tipSuggestionsEnabled')?.checked || false,
+    tipFeeMode: document.getElementById('tipFeeMode')?.value || 'RATE',
+    tipSuggestion1: parseInt(document.getElementById('tipSuggestion1')?.value) || 15,
+    tipSuggestion2: parseInt(document.getElementById('tipSuggestion2')?.value) || 18,
+    tipSuggestion3: parseInt(document.getElementById('tipSuggestion3')?.value) || 20,
+    taxEnabled: document.getElementById('taxEnabled')?.checked || false,
+    taxRate: parseInt(document.getElementById('taxRate')?.value) || 8,
+    printReceipt: document.getElementById('printReceipt')?.value || 'NONE',
+    signatureEnabled: document.getElementById('signatureEnabled')?.checked || false,
+    signatureMode: document.getElementById('signatureMode')?.value || 'ON_SCREEN',
+    signatureThresholdEnabled: document.getElementById('signatureThresholdEnabled')?.checked || false,
+    signatureThreshold: parseInt(document.getElementById('signatureThreshold')?.value) || 5000,
+  };
+}
+
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(getSettings())); } catch { /* ignore */ }
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    const setChecked = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+    const setValue = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
+    setChecked('tipEnabled', s.tipEnabled);
+    setValue('tipMode', s.tipMode);
+    setChecked('tipOnScreenTip', s.tipOnScreenTip);
+    setChecked('tipWithTax', s.tipWithTax);
+    setChecked('tipSuggestionsEnabled', s.tipSuggestionsEnabled);
+    setValue('tipFeeMode', s.tipFeeMode);
+    setValue('tipSuggestion1', s.tipSuggestion1);
+    setValue('tipSuggestion2', s.tipSuggestion2);
+    setValue('tipSuggestion3', s.tipSuggestion3);
+    setChecked('taxEnabled', s.taxEnabled);
+    setValue('taxRate', s.taxRate);
+    setValue('printReceipt', s.printReceipt);
+    setChecked('signatureEnabled', s.signatureEnabled);
+    setValue('signatureMode', s.signatureMode);
+    setChecked('signatureThresholdEnabled', s.signatureThresholdEnabled);
+    setValue('signatureThreshold', s.signatureThreshold);
+    // Sync visibility
+    toggleSubSettings();
+  } catch { /* ignore */ }
+}
+
+function toggleSubSettings() {
+  const tipSettings = document.getElementById('tipSettings');
+  const tipSuggestionsPanel = document.getElementById('tipSuggestionsPanel');
+  const taxSettings = document.getElementById('taxSettings');
+  const signatureSettings = document.getElementById('signatureSettings');
+
+  if (tipSettings) tipSettings.classList.toggle('hidden', !document.getElementById('tipEnabled')?.checked);
+  if (tipSuggestionsPanel) tipSuggestionsPanel.classList.toggle('hidden', !document.getElementById('tipSuggestionsEnabled')?.checked);
+  if (taxSettings) taxSettings.classList.toggle('hidden', !document.getElementById('taxEnabled')?.checked);
+  if (signatureSettings) signatureSettings.classList.toggle('hidden', !document.getElementById('signatureEnabled')?.checked);
+}
+
+// Build tipConfig object for API request (matches SDK TipConfig structure)
+function buildTipConfig() {
+  const s = getSettings();
+  if (!s.tipEnabled) return undefined;
+  const config = {
+    onScreenTip: s.tipOnScreenTip,
+    mode: s.tipMode,
+    tipWithTax: s.tipWithTax,
+  };
+  if (s.tipSuggestionsEnabled) {
+    config.suggestions = {
+      feeMode: s.tipFeeMode,
+      options: [
+        { value: s.tipSuggestion1 },
+        { value: s.tipSuggestion2 },
+        { value: s.tipSuggestion3 },
+      ],
+    };
+  }
+  return config;
+}
+
+// Build signatureConfig object for API request
+function buildSignatureConfig() {
+  const s = getSettings();
+  if (!s.signatureEnabled) return undefined;
+  const config = { mode: s.signatureMode };
+  if (s.signatureThresholdEnabled) {
+    config.threshold = s.signatureThreshold;
+  }
+  return config;
+}
+
 // ============================================================
 // View Navigation & Rendering
 // ============================================================
@@ -252,11 +353,15 @@ function renderCheckout() {
       <div class="cart-item-qty">${formatMoney(p.priceCents * qty)}</div>`;
     el.checkoutCartList.appendChild(item);
   }
-  const tax = Math.round(subtotal * 0.08);
+  const settings = getSettings();
+  const taxRate = settings.taxEnabled ? settings.taxRate : 0;
+  const tax = Math.round(subtotal * taxRate / 100);
   const total = subtotal + tax;
   if (el.checkoutSubtotal) el.checkoutSubtotal.textContent = formatMoney(subtotal);
   if (el.checkoutTax) el.checkoutTax.textContent = formatMoney(tax);
   if (el.checkoutTotal) el.checkoutTotal.textContent = formatMoney(total);
+  const taxLabel = document.getElementById('checkoutTaxLabel');
+  if (taxLabel) taxLabel.textContent = taxRate > 0 ? `Tax (${taxRate}%)` : 'Tax';
   if (el.payBtnAmount) el.payBtnAmount.textContent = formatMoney(total);
   if (el.payBtn) el.payBtn.disabled = total <= 0;
 }
@@ -311,11 +416,7 @@ function removeViewDetailBtn() {
 }
 
 function addTimelineItem(text) {
-  if (!el.progressTimeline) return;
-  const item = document.createElement('div');
-  item.className = 'timeline-item';
-  item.innerHTML = `<span class="timeline-time">${formatTime(Date.now())}</span><span class="timeline-text">${text}</span>`;
-  el.progressTimeline.prepend(item);
+  logEvent(text);
 }
 
 // --- Detail Rendering ---
@@ -446,8 +547,10 @@ function getSelectedChannel() {
 // --- Execute Sale (Terminal: semi-integration) ---
 async function executeSale() {
   const cfg = getConfig();
+  const settings = getSettings();
   const subtotal = getCartTotal();
-  const tax = Math.round(subtotal * 0.08);
+  const taxRate = settings.taxEnabled ? settings.taxRate : 0;
+  const tax = Math.round(subtotal * taxRate / 100);
   const total = subtotal + tax;
 
   const orderId = uid('ORDER');
@@ -467,7 +570,7 @@ async function executeSale() {
     type: 'Sale',
     channel: 'terminal', // 'terminal' = semi-integration, 'online' = checkout session
     totalCents: total,
-    amount: { orderAmount: total, taxAmount: tax, tipAmount: 0, surchargeAmount: 0, totalAmount: total, priceCurrency: cfg.currency },
+    amount: { orderAmount: subtotal, taxAmount: tax, tipAmount: 0, surchargeAmount: 0, totalAmount: total, priceCurrency: cfg.currency },
     status: TxnStatus.PROCESSING,
     progressMessage: 'Sending to terminal...',
     errorMessage: null,
@@ -505,6 +608,9 @@ async function executeSale() {
     terminalSn: cfg.terminalSn,
     notifyUrl: FIXED_NOTIFY_WEBHOOK_URL,
     terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL,
+    printReceipt: settings.printReceipt !== 'NONE' ? settings.printReceipt : undefined,
+    tipConfig: buildTipConfig(),
+    signatureConfig: buildSignatureConfig(),
   };
 
   try {
@@ -526,8 +632,10 @@ async function executeSale() {
 // --- Execute Online Checkout (Create Checkout Session) ---
 async function executeOnlineCheckout() {
   const cfg = getConfig();
+  const settings = getSettings();
   const subtotal = getCartTotal();
-  const tax = Math.round(subtotal * 0.08);
+  const taxRate = settings.taxEnabled ? settings.taxRate : 0;
+  const tax = Math.round(subtotal * taxRate / 100);
   const total = subtotal + tax;
 
   const orderId = uid('ORDER');
@@ -547,7 +655,7 @@ async function executeOnlineCheckout() {
     type: 'Checkout Session',
     channel: 'online', // online checkout session
     totalCents: total,
-    amount: { orderAmount: total, taxAmount: tax, tipAmount: 0, surchargeAmount: 0, totalAmount: total, priceCurrency: cfg.currency },
+    amount: { orderAmount: subtotal, taxAmount: tax, tipAmount: 0, surchargeAmount: 0, totalAmount: total, priceCurrency: cfg.currency },
     status: TxnStatus.PROCESSING,
     progressMessage: 'Creating checkout session...',
     errorMessage: null,
@@ -1119,6 +1227,18 @@ function bindEvents() {
     node.addEventListener('change', saveConfig);
   });
 
+  // Settings toggles (tip, tax, print, signature)
+  ['tipEnabled', 'tipSuggestionsEnabled', 'taxEnabled', 'signatureEnabled'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => { toggleSubSettings(); saveSettings(); });
+  });
+  ['tipMode', 'tipOnScreenTip', 'tipWithTax', 'tipFeeMode', 'tipSuggestion1', 'tipSuggestion2', 'tipSuggestion3',
+   'taxRate', 'printReceipt', 'signatureMode', 'signatureThresholdEnabled', 'signatureThreshold'].forEach(id => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.addEventListener('change', saveSettings);
+    node.addEventListener('input', saveSettings);
+  });
+
   // ESC to close modal
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(el.configModal); });
 }
@@ -1135,6 +1255,7 @@ function bootstrap() {
   initElements();
   loadConfig();
   loadTransactions();
+  loadSettings();
 
   // Set default backend URL
   const defaultBackend = getDefaultBackendUrl();

@@ -54,7 +54,7 @@
           <span id="checkoutSubtotal">$0.00</span>
         </div>
         <div class="summary-line">
-          <span>Tax (8%)</span>
+          <span id="checkoutTaxLabel">Tax (8%)</span>
           <span id="checkoutTax">$0.00</span>
         </div>
         <div class="divider"></div>
@@ -93,8 +93,6 @@
         <h2 id="progressTitle">Processing Payment</h2>
         <p id="progressSubtitle" class="text-muted">Connecting to payment terminal...</p>
       </div>
-
-      <div class="progress-timeline" id="progressTimeline"></div>
 
       <div class="progress-actions">
         <button id="abortBtn" class="abort-btn" type="button">Abort Transaction</button>
@@ -180,21 +178,87 @@
     <button class="modal-backdrop" data-modal-close type="button"></button>
     <section class="modal-card modal-card--wide" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h2>Configuration</h2>
+        <h2>Settings</h2>
         <button class="icon-button" data-modal-close type="button">✕</button>
       </div>
-      <div class="field-grid">
-        <label>Backend URL<input id="backendUrl" value="" /></label>
-        <label>Env<select id="envType"><option value="uat" selected>UAT</option><option value="sandbox">Sandbox</option><option value="production">Production</option><option value="custom">Custom</option></select></label>
-        <label>Custom Base URL<input id="customBaseUrl" value="https://open.sunbay-uat.us" /></label>
-        <label>API Key<input id="apiKey" /></label>
-        <label>App ID<input id="appId" value="smfut73g9wbwj9eb" /></label>
-        <label>Merchant ID<input id="merchantId" value="M1263029001" /></label>
-        <label>Terminal SN<input id="terminalSn" value="P339252L11100" /></label>
-        <label>Currency<input id="currency" value="USD" /></label>
-        <label>Notify URL<input id="notifyUrl" value="http://47.77.239.198/webhook/sunbay" readonly /></label>
-        <label>Event URL<input id="configEventUrl" value="http://47.77.239.198/terminal-events/sunbay" readonly /></label>
-        <label>Return URL<input id="returnUrl" value="https://merchant.example.com/result" /></label>
+      <div class="settings-body">
+        <!-- Connection / API -->
+        <div class="settings-section">
+          <h3>🔌 Connection & API</h3>
+          <div class="field-grid">
+            <label>Backend URL<input id="backendUrl" value="" placeholder="auto-detect" /></label>
+            <label>Env<select id="envType"><option value="uat" selected>UAT</option><option value="sandbox">Sandbox</option><option value="production">Production</option><option value="custom">Custom</option></select></label>
+            <label>Custom Base URL<input id="customBaseUrl" value="https://open.sunbay-uat.us" /></label>
+            <label>API Key<input id="apiKey" /></label>
+            <label>App ID<input id="appId" value="smfut73g9wbwj9eb" /></label>
+            <label>Merchant ID<input id="merchantId" value="M1263029001" /></label>
+            <label>Terminal SN<input id="terminalSn" value="P339252L11100" /></label>
+            <label>Currency<input id="currency" value="USD" /></label>
+            <label>Notify URL<input id="notifyUrl" value="http://47.77.239.198/webhook/sunbay" readonly /></label>
+            <label>Event URL<input id="configEventUrl" value="http://47.77.239.198/terminal-events/sunbay" readonly /></label>
+            <label>Return URL<input id="returnUrl" value="https://merchant.example.com/result" /></label>
+          </div>
+        </div>
+
+        <!-- Tip Configuration -->
+        <div class="settings-section">
+          <h3>💰 Tip Configuration</h3>
+          <div class="setting-row">
+            <label class="toggle-label"><input type="checkbox" id="tipEnabled" /><span>Enable Tip</span></label>
+          </div>
+          <div id="tipSettings" class="sub-settings hidden">
+            <div class="field-grid">
+              <label>Tip Mode<select id="tipMode"><option value="ON_SALE">On Sale</option><option value="ON_RECEIPT">On Receipt</option></select></label>
+              <label class="toggle-label"><input type="checkbox" id="tipOnScreenTip" checked /><span>On-Screen Tip</span></label>
+              <label class="toggle-label"><input type="checkbox" id="tipWithTax" /><span>Tip with Tax</span></label>
+              <label class="toggle-label"><input type="checkbox" id="tipSuggestionsEnabled" /><span>Enable Suggestions</span></label>
+            </div>
+            <div id="tipSuggestionsPanel" class="sub-settings hidden">
+              <div class="field-grid">
+                <label>Fee Mode<select id="tipFeeMode"><option value="RATE">Rate (%)</option><option value="AMOUNT">Amount (cents)</option></select></label>
+                <label>Suggestion 1<input id="tipSuggestion1" type="number" value="15" min="0" /></label>
+                <label>Suggestion 2<input id="tipSuggestion2" type="number" value="18" min="0" /></label>
+                <label>Suggestion 3<input id="tipSuggestion3" type="number" value="20" min="0" /></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tax Configuration -->
+        <div class="settings-section">
+          <h3>🧾 Tax Configuration</h3>
+          <div class="setting-row">
+            <label class="toggle-label"><input type="checkbox" id="taxEnabled" /><span>Enable Tax</span></label>
+          </div>
+          <div id="taxSettings" class="sub-settings hidden">
+            <div class="field-grid">
+              <label>Tax Rate (%)<input id="taxRate" type="number" value="8" min="0" max="100" /></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Print Receipt -->
+        <div class="settings-section">
+          <h3>🖨️ Print Receipt</h3>
+          <div class="field-grid">
+            <label>Print Receipt<select id="printReceipt"><option value="NONE">None</option><option value="MERCHANT">Merchant Only</option><option value="CUSTOMER">Customer Only</option><option value="BOTH">Both</option></select></label>
+          </div>
+        </div>
+
+        <!-- Signature -->
+        <div class="settings-section">
+          <h3>✍️ Signature</h3>
+          <div class="setting-row">
+            <label class="toggle-label"><input type="checkbox" id="signatureEnabled" /><span>Enable Signature</span></label>
+          </div>
+          <div id="signatureSettings" class="sub-settings hidden">
+            <div class="field-grid">
+              <label>Signature Mode<select id="signatureMode"><option value="ON_SCREEN">On Screen</option><option value="ON_RECEIPT">On Receipt</option><option value="NONE">None</option></select></label>
+              <label class="toggle-label"><input type="checkbox" id="signatureThresholdEnabled" /><span>Enable Threshold</span></label>
+              <label>Threshold (cents)<input id="signatureThreshold" type="number" value="5000" min="0" /></label>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </div>
