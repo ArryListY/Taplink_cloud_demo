@@ -494,18 +494,41 @@ async function executeRefund(origTxn) {
 // --- Batch Close ---
 async function executeBatchClose() {
   const txn = createTxnRecord(TxnType.BATCH_CLOSE); startTxnProgress(txn);
-  // Step 1: Query batch
-  const queryPayload = { appId: getConfig().appId, merchantId: getConfig().merchantId, terminalSn: getConfig().terminalSn };
+  const cfg = getConfig();
+  // Step 1: Query batch to get channelCode list
+  const queryPayload = { appId: cfg.appId, merchantId: cfg.merchantId, terminalSn: cfg.terminalSn };
   try {
     const qr = await callProxy('GET', API_PATHS.BATCH_QUERY, queryPayload);
     const qCode = extractCodeFromResponse(qr.data);
     if (qCode && qCode !== '0') { txn.status = TxnStatus.FAILED; txn.errorMessage = `Batch query: [${qCode}] ${extractMsgFromResponse(qr.data)}`; txn.updatedAt = Date.now(); saveTransactions(); renderProgress(); return; }
-    logEvent(`Batch query OK`);
-    // Step 2: Close
-    const payload = { ...basePayload(), transactionRequestId: txn.requestId, printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : 'AUTO', notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
-    const r = await callProxy('POST', API_PATHS.BATCH_CLOSE, payload);
-    await handleApiResult(r, txn);
-  } catch (e) { logEvent(`Batch close failed: ${e.message}`); }
+
+    // Extract channelCodes from batchList
+    const batchList = qr.data?.data?.data?.batchList || qr.data?.data?.batchList || [];
+    if (!batchList || batchList.length === 0) { txn.status = TxnStatus.FAILED; txn.errorMessage = 'No batch data found. No transactions to settle.'; txn.updatedAt = Date.now(); saveTransactions(); renderProgress(); return; }
+
+    const channelCodes = [...new Set(batchList.map(item => item.channelCode).filter(Boolean))];
+    logEvent(`Batch query OK: ${channelCodes.length} channel(s) - ${channelCodes.join(', ')}`);
+
+    // Step 2: Close each channel
+    let successCount = 0;
+    let failCount = 0;
+    for (const channelCode of channelCodes) {
+      const closeRequestId = channelCodes.length > 1 ? `${txn.requestId}_${channelCode}` : txn.requestId;
+      const closePayload = { ...basePayload(), transactionRequestId: closeRequestId, channelCode, description: 'Batch Close', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : 'AUTO', notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+      try {
+        const r = await callProxy('POST', API_PATHS.BATCH_CLOSE, closePayload);
+        const code = extractCodeFromResponse(r.data);
+        if (!code || code === '0') { successCount++; logEvent(`Batch close [${channelCode}]: OK`); }
+        else { failCount++; logEvent(`Batch close [${channelCode}]: [${code}] ${extractMsgFromResponse(r.data)}`); }
+      } catch (e) { failCount++; logEvent(`Batch close [${channelCode}] failed: ${e.message}`); }
+    }
+
+    // Final result
+    if (failCount === 0) { txn.status = TxnStatus.SUCCESS; txn.errorMessage = null; }
+    else if (successCount > 0) { txn.status = TxnStatus.SUCCESS; txn.errorMessage = `Partial: ${successCount} OK, ${failCount} failed`; }
+    else { txn.status = TxnStatus.FAILED; txn.errorMessage = `All ${failCount} channel(s) failed`; }
+    txn.updatedAt = Date.now(); saveTransactions(); renderProgress(); updateDevConsole();
+  } catch (e) { logEvent(`Batch close failed: ${e.message}`); txn.status = TxnStatus.FAILED; txn.errorMessage = e.message; txn.updatedAt = Date.now(); saveTransactions(); renderProgress(); }
 }
 
 // --- Query ---
