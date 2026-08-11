@@ -502,14 +502,23 @@ async function executeBatchClose() {
 // --- Query ---
 async function runQuery(requestId) {
   const cfg = getConfig();
-  const payload = { appId: cfg.appId, merchantId: cfg.merchantId, transactionRequestId: requestId || activeTxn?.requestId || '' };
+  // Find the transaction to query - prefer transactionId over transactionRequestId
+  const targetTxn = transactions.find(t => t.requestId === requestId) || activeTxn;
+  const payload = { appId: cfg.appId, merchantId: cfg.merchantId };
+  if (targetTxn?.transactionId) {
+    payload.transactionId = targetTxn.transactionId;
+  } else {
+    payload.transactionRequestId = requestId || activeTxn?.requestId || '';
+  }
   try {
     const r = await callProxy('GET', API_PATHS.QUERY, payload);
-    logEvent(`Query: HTTP ${r.httpStatus}`);
+    const code = extractCodeFromResponse(r.data);
+    logEvent(`Query: HTTP ${r.httpStatus}, code=${code || '0'}`);
+    if (code && code !== '0') { logEvent(`Query error: [${code}] ${extractMsgFromResponse(r.data)}`); return; }
     const status = extractStatusFromResponse(r.data);
-    if (status && activeTxn && activeTxn.requestId === payload.transactionRequestId) {
-      activeTxn.status = status; activeTxn.updatedAt = Date.now();
-      const ids = extractIdsFromResponse(r.data); if (ids.transactionId) activeTxn.transactionId = ids.transactionId;
+    if (status && targetTxn) {
+      targetTxn.status = status; targetTxn.updatedAt = Date.now();
+      const ids = extractIdsFromResponse(r.data); if (ids.transactionId) targetTxn.transactionId = ids.transactionId;
       saveTransactions(); if (currentView === AppView.PROGRESS) renderProgress(); if (currentView === AppView.DETAIL) renderDetail(); updateDevConsole();
     }
   } catch (e) { logEvent(`Query failed: ${e.message}`); }
@@ -519,7 +528,7 @@ async function runQuery(requestId) {
 async function executeOnlineCheckout() {
   const cfg = getConfig();
   const txn = createTxnRecord(TxnType.CHECKOUT_SESSION, 'online'); startTxnProgress(txn);
-  const productList = Object.entries(cart).filter(([,q]) => q > 0).map(([pid, qty]) => { const p = PRODUCTS.find(x => x.id === pid); return { amount: p.priceCents * qty, name: p.name, num: qty }; });
+  const productList = Object.entries(cart).filter(([,q]) => q > 0).map(([pid, qty]) => { const p = PRODUCTS.find(x => x.id === pid); return { amount: p.priceCents, name: p.name, num: qty }; });
   const description = productList.map(it => `${it.name} x${it.num}`).join(', ') || 'Checkout';
   const returnBaseUrl = `${window.location.origin}/return.html`;
   const payload = { appId: cfg.appId, merchantId: cfg.merchantId, referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description, productList, merchantReturnUrl: cfg.returnUrl || returnBaseUrl, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
