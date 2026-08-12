@@ -312,19 +312,19 @@ function renderProgress() {
   if (status === TxnStatus.SUCCESS) {
     if (el.progressTitle) el.progressTitle.textContent = 'Transaction Successful';
     if (el.progressSubtitle) el.progressSubtitle.textContent = 'Completed.';
-    if (spinner) { spinner.classList.add('done'); spinner.classList.remove('error'); }
+    if (spinner) { spinner.className = 'progress-result-icon success'; spinner.innerHTML = '✓'; }
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
     removeCheckoutLink(); showViewDetailBtn();
   } else if (status === TxnStatus.FAILED) {
     if (el.progressTitle) el.progressTitle.textContent = 'Transaction Failed';
     if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.errorMessage || 'Declined or aborted.';
-    if (spinner) { spinner.classList.add('error'); spinner.classList.remove('done'); }
+    if (spinner) { spinner.className = 'progress-result-icon error'; spinner.innerHTML = '✕'; }
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
     removeCheckoutLink(); showViewDetailBtn();
   } else {
     if (el.progressTitle) el.progressTitle.textContent = 'Processing...';
     if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.progressMessage || 'Waiting for terminal...';
-    if (spinner) { spinner.classList.remove('done', 'error'); }
+    if (spinner) { spinner.className = 'progress-spinner'; spinner.innerHTML = ''; }
     if (el.abortBtn) { el.abortBtn.classList.remove('hidden'); el.abortBtn.disabled = false; el.abortBtn.textContent = activeTxn.channel === 'online' ? 'Close Session' : 'Abort Transaction'; }
     removeViewDetailBtn();
   }

@@ -115,9 +115,13 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .progress-amount { display: block; font-size: 36px; font-weight: 800; margin-top: 8px; }
 .progress-animation { margin-bottom: 32px; }
 .progress-spinner { width: 56px; height: 56px; border: 4px solid #F3F0EC; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 24px; }
-.progress-spinner.done { animation: none; border-color: var(--success); border-top-color: var(--success); }
-.progress-spinner.error { animation: none; border-color: var(--error); border-top-color: var(--error); }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Result icons (replace spinner on success/failure) */
+.progress-result-icon { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; margin: 0 auto 24px; animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.progress-result-icon.success { background: var(--success-bg); color: var(--success); box-shadow: 0 8px 20px rgba(30, 158, 97, 0.2); }
+.progress-result-icon.error { background: var(--error-bg); color: var(--error); box-shadow: 0 8px 20px rgba(224, 59, 59, 0.2); }
+@keyframes scaleIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .progress-animation h2 { font-size: 20px; margin-bottom: 8px; }
 .progress-animation p { font-size: 14px; margin: 0; }
 .progress-actions { padding-top: 8px; }
