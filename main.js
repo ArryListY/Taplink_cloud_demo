@@ -74,7 +74,7 @@ let recentEventTimer = null;
 const el = {};
 function initElements() {
   const ids = [
-    'menuView', 'checkoutView', 'progressView', 'detailView', 'historyView',
+    'menuView', 'checkoutView', 'detailView', 'historyView', 'progressModal',
     'menuGrid', 'floatingCart', 'cartCountBadge', 'cartTotalFloat', 'goToCheckoutBtn',
     'backToMenuBtn', 'checkoutCartList', 'checkoutSubtotal', 'checkoutTax', 'checkoutTotal', 'payBtn', 'payBtnAmount', 'checkoutTaxLabel',
     'progressType', 'progressAmount', 'progressTitle', 'progressSubtitle', 'abortBtn', 'progressOrderId', 'progressReqId', 'progressIconWrapper', 'progressTerminalStatus',
@@ -243,15 +243,27 @@ function buildSignatureConfig() {
 // === View Navigation ===
 function navigateTo(view, opts = {}) {
   currentView = view;
-  ['menuView','checkoutView','progressView','detailView','historyView'].forEach(v => { if (el[v]) el[v].classList.add('hidden'); });
+  ['menuView','checkoutView','detailView','historyView'].forEach(v => { if (el[v]) el[v].classList.add('hidden'); });
   if (el.floatingCart) el.floatingCart.classList.toggle('hidden', !(view === AppView.MENU && getCartCount() > 0));
+  // Close progress modal when navigating away from progress
+  if (view !== AppView.PROGRESS) closeProgressModal();
   switch (view) {
     case AppView.MENU: el.menuView.classList.remove('hidden'); renderMenu(); break;
     case AppView.CHECKOUT: el.checkoutView.classList.remove('hidden'); renderCheckout(); break;
-    case AppView.PROGRESS: el.progressView.classList.remove('hidden'); renderProgress(); break;
+    case AppView.PROGRESS: openProgressModal(); renderProgress(); break;
     case AppView.DETAIL: currentDetailTxnId = opts.txnId || currentDetailTxnId; el.detailView.classList.remove('hidden'); renderDetail(); break;
     case AppView.HISTORY: el.historyView.classList.remove('hidden'); renderHistory(); break;
   }
+}
+
+function openProgressModal() {
+  const modal = document.getElementById('progressModal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeProgressModal() {
+  const modal = document.getElementById('progressModal');
+  if (modal) modal.classList.add('hidden');
 }
 
 // === Render Functions ===
@@ -340,9 +352,9 @@ function renderProgress() {
   else if (termStatus) { termStatus.classList.remove('visible'); }
 }
 
-function showViewDetailBtn() { if (document.getElementById('viewDetailBtn')) return; const b = document.createElement('button'); b.id = 'viewDetailBtn'; b.className = 'view-detail-btn'; b.textContent = 'View Details'; b.onclick = () => navigateTo(AppView.DETAIL, { txnId: activeTxn?.id }); el.progressView?.querySelector('.progress-actions')?.appendChild(b); }
+function showViewDetailBtn() { if (document.getElementById('viewDetailBtn')) return; const b = document.createElement('button'); b.id = 'viewDetailBtn'; b.className = 'view-detail-btn'; b.textContent = 'View Details'; b.onclick = () => navigateTo(AppView.DETAIL, { txnId: activeTxn?.id }); document.querySelector('.progress-actions')?.appendChild(b); }
 function removeViewDetailBtn() { document.getElementById('viewDetailBtn')?.remove(); }
-function showCheckoutLink(url) { removeCheckoutLink(); const c = document.createElement('div'); c.id = 'checkoutLinkContainer'; c.className = 'checkout-link-container'; c.innerHTML = `<p class="checkout-link-label">Payment page ready:</p><a href="${url}" target="_blank" rel="noopener" class="checkout-link-btn">Open Checkout ↗</a><p class="checkout-link-url">${url}</p>`; const a = el.progressView?.querySelector('.progress-animation'); if (a) a.after(c); }
+function showCheckoutLink(url) { removeCheckoutLink(); const c = document.createElement('div'); c.id = 'checkoutLinkContainer'; c.className = 'checkout-link-container'; c.innerHTML = `<p class="checkout-link-label">Payment page ready:</p><a href="${url}" target="_blank" rel="noopener" class="checkout-link-btn">Open Checkout ↗</a><p class="checkout-link-url">${url}</p>`; const a = document.querySelector('.progress-status-area'); if (a) a.after(c); }
 function removeCheckoutLink() { document.getElementById('checkoutLinkContainer')?.remove(); }
 
 function renderDetail() {
@@ -478,7 +490,7 @@ function createTxnRecord(type, channel = 'terminal') {
 }
 
 function startTxnProgress(txn) {
-  navigateTo(AppView.PROGRESS); logEvent(`${txn.type} initiated`); connectEventStream(); startRecentEventPolling(); updateDevConsole();
+  currentView = AppView.PROGRESS; openProgressModal(); renderProgress(); logEvent(`${txn.type} initiated`); connectEventStream(); startRecentEventPolling(); updateDevConsole();
 }
 
 async function handleApiResult(result, txn) {

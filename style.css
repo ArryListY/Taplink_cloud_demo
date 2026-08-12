@@ -108,7 +108,8 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .secondary-fields .field-grid { gap: 10px; }
 .secondary-fields input { padding: 10px 12px; font-size: 13px; }
 
-/* === Progress View === */
+/* === Progress Modal === */
+.progress-modal-card { position: relative; z-index: 1000; background: var(--surface); border-radius: 20px; padding: 28px; width: 420px; max-width: 90vw; box-shadow: 0 24px 48px rgba(0,0,0,0.15); }
 .progress-container { max-width: 480px; margin: 0 auto; padding-top: 10px; }
 
 /* Order Info Card */

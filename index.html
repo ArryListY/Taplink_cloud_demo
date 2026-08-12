@@ -97,9 +97,10 @@
     </div>
   </main>
 
-  <!-- View 3: Transaction Progress -->
-  <main id="progressView" class="store-layout view hidden">
-    <div class="progress-container">
+  <!-- Progress Modal (overlays on Checkout) -->
+  <div id="progressModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <section class="modal-card progress-modal-card" role="dialog" aria-modal="true">
       <!-- Order Info -->
       <div class="progress-order-info" id="progressOrderInfo">
         <div class="progress-order-row">
@@ -123,7 +124,7 @@
       <!-- Status Display -->
       <div class="progress-status-area">
         <div class="progress-icon-wrapper" id="progressIconWrapper">
-          <div class="progress-spinner" id="progressSpinner"></div>
+          <div class="progress-spinner"></div>
         </div>
         <h2 id="progressTitle">Processing Payment</h2>
         <p id="progressSubtitle" class="text-muted">Connecting to payment terminal...</p>
@@ -133,8 +134,8 @@
       <div class="progress-actions">
         <button id="abortBtn" class="abort-btn" type="button">Abort Transaction</button>
       </div>
-    </div>
-  </main>
+    </section>
+  </div>
 
   <!-- View 4: Transaction Detail -->
   <main id="detailView" class="store-layout view hidden">
