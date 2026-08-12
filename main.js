@@ -77,7 +77,7 @@ function initElements() {
     'menuView', 'checkoutView', 'detailView', 'historyView', 'progressModal',
     'menuGrid', 'floatingCart', 'cartCountBadge', 'cartTotalFloat', 'goToCheckoutBtn',
     'backToMenuBtn', 'checkoutCartList', 'checkoutSubtotal', 'checkoutTax', 'checkoutTotal', 'payBtn', 'payBtnAmount', 'checkoutTaxLabel',
-    'progressType', 'progressAmount', 'progressTitle', 'progressSubtitle', 'abortBtn', 'progressOrderId', 'progressReqId', 'progressIconWrapper', 'progressTerminalStatus',
+    'progressType', 'progressAmount', 'progressTitle', 'abortBtn', 'progressOrderId', 'progressReqId', 'progressIconWrapper', 'progressTerminalStatus',
     'detailResult', 'detailFields', 'detailActions',
     'historyBackBtn', 'historyFilters', 'historyList', 'historyEmpty', 'historyBtn',
     'devConsole', 'openDevConsoleBtn', 'closeDevConsoleBtn',
@@ -329,19 +329,16 @@ function renderProgress() {
 
   if (status === TxnStatus.SUCCESS) {
     if (el.progressTitle) el.progressTitle.textContent = 'Transaction Successful';
-    if (el.progressSubtitle) el.progressSubtitle.textContent = 'Completed.';
     if (iconWrapper) iconWrapper.innerHTML = '<div class="progress-result-icon success">✓</div>';
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
     removeCheckoutLink(); showViewDetailBtn();
   } else if (status === TxnStatus.FAILED) {
     if (el.progressTitle) el.progressTitle.textContent = 'Transaction Failed';
-    if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.errorMessage || 'Declined or aborted.';
     if (iconWrapper) iconWrapper.innerHTML = '<div class="progress-result-icon error">✕</div>';
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
     removeCheckoutLink(); showViewDetailBtn();
   } else {
     if (el.progressTitle) el.progressTitle.textContent = 'Processing...';
-    if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.progressMessage || 'Waiting for terminal...';
     if (iconWrapper) iconWrapper.innerHTML = '<div class="progress-spinner"></div>';
     if (el.abortBtn) { el.abortBtn.classList.remove('hidden'); el.abortBtn.disabled = false; el.abortBtn.textContent = activeTxn.channel === 'online' ? 'Close Session' : 'Abort Transaction'; }
     removeViewDetailBtn();
@@ -822,8 +819,6 @@ function handleTerminalEvent(parsed) {
   if (snap.eventType) {
     const desc = terminalEventDesc(snap.eventType);
     logEvent(`[terminal] ${snap.eventType}${desc ? ' - ' + desc : ''}`);
-    // Update progress subtitle with terminal status
-    if (el.progressSubtitle && currentView === AppView.PROGRESS) el.progressSubtitle.textContent = desc || snap.eventType;
     // Save last terminal event for badge display
     activeTxn._lastTerminalEvent = desc || snap.eventType;
     const termStatus = document.getElementById('progressTerminalStatus');
@@ -890,7 +885,7 @@ function matchesActiveTxn(reqId, refId, txnId) {
 }
 
 function normalizeStatus(raw) { const s = String(raw).toUpperCase(); if (['S','SUCCESS','APPROVED','COMPLETED'].includes(s)) return TxnStatus.SUCCESS; if (['F','FAILED','DECLINED','CANCELLED','VOIDED','ABORTED','C'].includes(s)) return TxnStatus.FAILED; return TxnStatus.PROCESSING; }
-function terminalEventDesc(et) { return { 'ORDER_RECEIVED': 'Cloud connected', 'PAYMENT_PRESENTED': 'Waiting for card', 'PIN_ENTERING': 'PIN entry', 'PAYMENT_PROCESSING': 'Processing', 'SIGNATURE_CAPTURED': 'Signature captured', 'PRINTING': 'Printing', 'PRINT_COMPLETED': 'Printed', 'TRANSACTION_ENDED': 'Ended' }[String(et).toUpperCase()] || ''; }
+function terminalEventDesc(et) { const map = { 'ORDER_RECEIVED': 'Order Received', 'PAYMENT_PRESENTED': 'Waiting for Card', 'PIN_ENTERING': 'PIN Entry', 'PAYMENT_PROCESSING': 'Processing', 'SIGNING': 'Signing', 'PRINTING': 'Printing Receipt', 'PRINT_COMPLETED': 'Print Completed', 'TRANSACTION_ENDED': 'Transaction Ended' }; return map[String(et).toUpperCase()] || String(et); }
 
 // === Response Helpers ===
 function extractIdsFromResponse(data) { const r = { transactionId: '', transactionRequestId: '', referenceOrderId: '' }; if (!data) return r; for (const n of collectPlainObjects(data)) { if (!r.transactionId && n.transactionId) r.transactionId = String(n.transactionId); if (!r.transactionRequestId && n.transactionRequestId) r.transactionRequestId = String(n.transactionRequestId); if (!r.referenceOrderId && n.referenceOrderId) r.referenceOrderId = String(n.referenceOrderId); } return r; }
@@ -938,6 +933,7 @@ function bindEvents() {
     }
   });
   el.abortBtn?.addEventListener('click', () => executeAbort());
+  document.getElementById('closeProgressBtn')?.addEventListener('click', () => closeProgressModal());
   el.historyBtn?.addEventListener('click', () => navigateTo(AppView.HISTORY));
   el.historyBackBtn?.addEventListener('click', () => navigateTo(AppView.MENU));
   document.getElementById('batchCloseBtn')?.addEventListener('click', () => executeBatchClose());
