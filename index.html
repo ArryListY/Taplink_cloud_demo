@@ -92,6 +92,21 @@
             </label>
           </div>
         </div>
+
+        <!-- Split Payment -->
+        <div class="payment-method-section">
+          <h3>Split Payment</h3>
+          <div class="setting-row">
+            <label class="toggle-label"><input type="checkbox" id="splitEnabled" /><span>Enable Split (Multiple Payments)</span></label>
+          </div>
+          <div id="splitSettings" class="sub-settings hidden">
+            <div class="field-grid">
+              <label>Number of Splits<input id="splitCount" type="number" value="2" min="2" max="10" /></label>
+            </div>
+            <p class="split-hint">Total will be divided equally. Each payment processes sequentially after terminal confirms the previous one.</p>
+          </div>
+        </div>
+
         <button id="payBtn" class="pay-button" type="button" disabled>Execute <span id="payBtnAmount">$0.00</span></button>
       </section>
     </div>

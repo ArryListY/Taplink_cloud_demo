@@ -70,6 +70,9 @@ let historyFilter = 'all';
 let eventSource = null;
 let recentEventTimer = null;
 
+// Split payment state
+let splitState = { enabled: false, totalSplits: 2, currentSplit: 0, splitAmounts: [], splitTxns: [] };
+
 // === DOM Elements ===
 const el = {};
 function initElements() {
@@ -730,6 +733,94 @@ async function executeUnreferencedRefund() {
   try { const r = await callProxy('POST', API_PATHS.REFUND, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
+// ============================================================
+// Split Payment Logic
+// ============================================================
+function startSplitPayment() {
+  const totalAmount = getOrderTotal();
+  const count = parseInt(document.getElementById('splitCount')?.value) || 2;
+  if (count < 2 || totalAmount <= 0) { logEvent('Split requires at least 2 splits and amount > 0'); return; }
+
+  // Calculate split amounts (distribute remainder to last split)
+  const perSplit = Math.floor(totalAmount / count);
+  const remainder = totalAmount - perSplit * count;
+  const amounts = [];
+  for (let i = 0; i < count; i++) {
+    amounts.push(i === count - 1 ? perSplit + remainder : perSplit);
+  }
+
+  splitState = { enabled: true, totalSplits: count, currentSplit: 0, splitAmounts: amounts, splitTxns: [] };
+  logEvent(`Split payment started: ${count} splits, amounts: ${amounts.map(a => formatMoney(a)).join(', ')}`);
+  executeSplitNext();
+}
+
+function executeSplitNext() {
+  if (splitState.currentSplit >= splitState.totalSplits) {
+    // All splits done
+    logEvent(`Split payment completed: ${splitState.splitTxns.length}/${splitState.totalSplits} successful`);
+    splitState.enabled = false;
+    return;
+  }
+
+  const idx = splitState.currentSplit;
+  const amount = splitState.splitAmounts[idx];
+  const cfg = getConfig();
+  const s = getSettings();
+  const orderId = uid('ORDER');
+  const requestId = uid('REQ');
+  const description = `Split ${idx + 1}/${splitState.totalSplits}`;
+
+  const txn = {
+    id: requestId, orderId, requestId, transactionId: null,
+    type: `${selectedTxnType} (${idx + 1}/${splitState.totalSplits})`,
+    channel: 'terminal', totalCents: amount,
+    amount: { orderAmount: amount, priceCurrency: cfg.currency, totalAmount: amount },
+    status: TxnStatus.PROCESSING, progressMessage: `Split ${idx + 1} of ${splitState.totalSplits}...`,
+    errorMessage: null, events: [], result: {},
+    createdAt: Date.now(), updatedAt: Date.now(),
+    terminalEnded: false, notifyStatus: null, seenEventKeys: []
+  };
+  activeTxn = txn;
+  transactions.push(txn);
+  saveTransactions();
+  splitState.splitTxns.push(txn);
+
+  // Open/update progress modal
+  currentView = AppView.PROGRESS;
+  openProgressModal();
+  renderProgress();
+  logEvent(`Split ${idx + 1}/${splitState.totalSplits}: ${formatMoney(amount)}`);
+  connectEventStream();
+  startRecentEventPolling();
+  updateDevConsole();
+
+  // Send request
+  const payload = {
+    ...basePayload(), referenceOrderId: orderId, transactionRequestId: requestId,
+    amount: txn.amount, description,
+    notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL,
+    printReceipt: s.printReceipt !== 'NONE' ? s.printReceipt : undefined,
+    tipConfig: buildTipConfig(), signatureConfig: buildSignatureConfig(),
+  };
+
+  const path = selectedTxnType === TxnType.AUTH ? API_PATHS.AUTH : API_PATHS.SALE;
+  callProxy('POST', path, payload).then(r => handleApiResult(r, txn)).catch(e => logEvent(`Split ${idx + 1} failed: ${e.message}`));
+}
+
+function checkSplitNext() {
+  if (!splitState.enabled) return;
+  if (!activeTxn?.terminalEnded) return;
+  // Move to next split immediately
+  splitState.currentSplit++;
+  if (splitState.currentSplit < splitState.totalSplits) {
+    logEvent(`Split ${splitState.currentSplit}/${splitState.totalSplits} ended. Starting next...`);
+    executeSplitNext();
+  } else {
+    logEvent(`All ${splitState.totalSplits} splits completed.`);
+    splitState.enabled = false;
+  }
+}
+
 // --- Merchant Query ---
 async function queryMerchant() {
   const cfg = getConfig();
@@ -824,7 +915,7 @@ function handleTerminalEvent(parsed) {
     const termStatus = document.getElementById('progressTerminalStatus');
     if (termStatus) { termStatus.textContent = '🔌 Terminal: ' + activeTxn._lastTerminalEvent; termStatus.classList.add('visible'); }
   }
-  if (snap.eventType === 'TRANSACTION_ENDED') { activeTxn.terminalEnded = true; logEvent('Terminal ended.'); checkFinalState(); }
+  if (snap.eventType === 'TRANSACTION_ENDED') { activeTxn.terminalEnded = true; logEvent('Terminal ended.'); checkFinalState(); checkSplitNext(); }
   updateDevConsole();
 }
 
@@ -924,6 +1015,12 @@ function bindEvents() {
   el.payBtn?.addEventListener('click', () => {
     const channel = document.querySelector('input[name="payChannel"]:checked')?.value || 'terminal';
     if (channel === 'online') { executeOnlineCheckout(); return; }
+    // Check if split enabled
+    const splitEnabled = document.getElementById('splitEnabled')?.checked;
+    if (splitEnabled && (selectedTxnType === TxnType.SALE || selectedTxnType === TxnType.AUTH)) {
+      startSplitPayment();
+      return;
+    }
     switch (selectedTxnType) {
       case TxnType.SALE: executeSale(); break;
       case TxnType.AUTH: executeAuth(); break;
@@ -934,6 +1031,11 @@ function bindEvents() {
   });
   el.abortBtn?.addEventListener('click', () => executeAbort());
   document.getElementById('closeProgressBtn')?.addEventListener('click', () => closeProgressModal());
+  // Split toggle
+  document.getElementById('splitEnabled')?.addEventListener('change', () => {
+    const panel = document.getElementById('splitSettings');
+    if (panel) panel.classList.toggle('hidden', !document.getElementById('splitEnabled')?.checked);
+  });
   el.historyBtn?.addEventListener('click', () => navigateTo(AppView.HISTORY));
   el.historyBackBtn?.addEventListener('click', () => navigateTo(AppView.MENU));
   document.getElementById('batchCloseBtn')?.addEventListener('click', () => executeBatchClose());
