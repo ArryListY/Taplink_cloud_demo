@@ -316,6 +316,7 @@ function renderCheckout() {
   if (el.checkoutTotal) el.checkoutTotal.textContent = formatMoney(total);
   if (el.payBtnAmount) el.payBtnAmount.textContent = formatMoney(total);
   if (el.payBtn) el.payBtn.disabled = total <= 0;
+  updateSplitPreview();
 }
 
 function renderProgress() {
@@ -736,6 +737,24 @@ async function executeUnreferencedRefund() {
 // ============================================================
 // Split Payment Logic
 // ============================================================
+function updateSplitPreview() {
+  const preview = document.getElementById('splitPreview');
+  if (!preview) return;
+  const enabled = document.getElementById('splitEnabled')?.checked;
+  if (!enabled) { preview.innerHTML = ''; return; }
+  const totalAmount = getOrderTotal();
+  const count = parseInt(document.getElementById('splitCount')?.value) || 2;
+  if (count < 2 || totalAmount <= 0) { preview.innerHTML = '<div class="split-preview-item"><span>Add items to cart first</span></div>'; return; }
+  const perSplit = Math.floor(totalAmount / count);
+  const remainder = totalAmount - perSplit * count;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    const amt = i === count - 1 ? perSplit + remainder : perSplit;
+    html += `<div class="split-preview-item"><span>Split ${i + 1}</span><span>${formatMoney(amt)}</span></div>`;
+  }
+  preview.innerHTML = html;
+}
+
 function startSplitPayment() {
   const totalAmount = getOrderTotal();
   const count = parseInt(document.getElementById('splitCount')?.value) || 2;
@@ -1035,7 +1054,9 @@ function bindEvents() {
   document.getElementById('splitEnabled')?.addEventListener('change', () => {
     const panel = document.getElementById('splitSettings');
     if (panel) panel.classList.toggle('hidden', !document.getElementById('splitEnabled')?.checked);
+    updateSplitPreview();
   });
+  document.getElementById('splitCount')?.addEventListener('input', updateSplitPreview);
   el.historyBtn?.addEventListener('click', () => navigateTo(AppView.HISTORY));
   el.historyBackBtn?.addEventListener('click', () => navigateTo(AppView.MENU));
   document.getElementById('batchCloseBtn')?.addEventListener('click', () => executeBatchClose());
