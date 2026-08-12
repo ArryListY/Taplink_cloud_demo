@@ -77,7 +77,7 @@ function initElements() {
     'menuView', 'checkoutView', 'progressView', 'detailView', 'historyView',
     'menuGrid', 'floatingCart', 'cartCountBadge', 'cartTotalFloat', 'goToCheckoutBtn',
     'backToMenuBtn', 'checkoutCartList', 'checkoutSubtotal', 'checkoutTax', 'checkoutTotal', 'payBtn', 'payBtnAmount', 'checkoutTaxLabel',
-    'progressType', 'progressAmount', 'progressTitle', 'progressSubtitle', 'abortBtn',
+    'progressType', 'progressAmount', 'progressTitle', 'progressSubtitle', 'abortBtn', 'progressOrderId', 'progressReqId', 'progressIconWrapper', 'progressTerminalStatus',
     'detailResult', 'detailFields', 'detailActions',
     'historyBackBtn', 'historyFilters', 'historyList', 'historyEmpty', 'historyBtn',
     'devConsole', 'openDevConsoleBtn', 'closeDevConsoleBtn',
@@ -307,27 +307,37 @@ function renderProgress() {
   if (!activeTxn) return;
   if (el.progressType) el.progressType.textContent = activeTxn.type || 'Sale';
   if (el.progressAmount) el.progressAmount.textContent = formatMoney(activeTxn.totalCents || 0);
+  const orderIdEl = document.getElementById('progressOrderId');
+  const reqIdEl = document.getElementById('progressReqId');
+  if (orderIdEl) orderIdEl.textContent = activeTxn.orderId || '-';
+  if (reqIdEl) reqIdEl.textContent = activeTxn.requestId || '-';
+
   const status = activeTxn.status;
-  const spinner = document.querySelector('.progress-spinner');
+  const iconWrapper = document.getElementById('progressIconWrapper');
+
   if (status === TxnStatus.SUCCESS) {
     if (el.progressTitle) el.progressTitle.textContent = 'Transaction Successful';
     if (el.progressSubtitle) el.progressSubtitle.textContent = 'Completed.';
-    if (spinner) { spinner.className = 'progress-result-icon success'; spinner.innerHTML = '✓'; }
+    if (iconWrapper) iconWrapper.innerHTML = '<div class="progress-result-icon success">✓</div>';
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
     removeCheckoutLink(); showViewDetailBtn();
   } else if (status === TxnStatus.FAILED) {
     if (el.progressTitle) el.progressTitle.textContent = 'Transaction Failed';
     if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.errorMessage || 'Declined or aborted.';
-    if (spinner) { spinner.className = 'progress-result-icon error'; spinner.innerHTML = '✕'; }
+    if (iconWrapper) iconWrapper.innerHTML = '<div class="progress-result-icon error">✕</div>';
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
     removeCheckoutLink(); showViewDetailBtn();
   } else {
     if (el.progressTitle) el.progressTitle.textContent = 'Processing...';
     if (el.progressSubtitle) el.progressSubtitle.textContent = activeTxn.progressMessage || 'Waiting for terminal...';
-    if (spinner) { spinner.className = 'progress-spinner'; spinner.innerHTML = ''; }
+    if (iconWrapper) iconWrapper.innerHTML = '<div class="progress-spinner"></div>';
     if (el.abortBtn) { el.abortBtn.classList.remove('hidden'); el.abortBtn.disabled = false; el.abortBtn.textContent = activeTxn.channel === 'online' ? 'Close Session' : 'Abort Transaction'; }
     removeViewDetailBtn();
   }
+  // Terminal status badge
+  const termStatus = document.getElementById('progressTerminalStatus');
+  if (termStatus && activeTxn._lastTerminalEvent) { termStatus.textContent = '🔌 Terminal: ' + activeTxn._lastTerminalEvent; termStatus.classList.add('visible'); }
+  else if (termStatus) { termStatus.classList.remove('visible'); }
 }
 
 function showViewDetailBtn() { if (document.getElementById('viewDetailBtn')) return; const b = document.createElement('button'); b.id = 'viewDetailBtn'; b.className = 'view-detail-btn'; b.textContent = 'View Details'; b.onclick = () => navigateTo(AppView.DETAIL, { txnId: activeTxn?.id }); el.progressView?.querySelector('.progress-actions')?.appendChild(b); }
@@ -797,8 +807,17 @@ function handleTerminalEvent(parsed) {
   const snap = extractTerminalSnapshot(body);
   if (!matchesActiveTxn(snap.transactionRequestId, snap.referenceOrderId, snap.transactionId)) return;
   if (snap.transactionId && activeTxn) activeTxn.transactionId = snap.transactionId;
-  if (snap.eventType) { const desc = terminalEventDesc(snap.eventType); logEvent(`[terminal] ${snap.eventType}${desc ? ' - ' + desc : ''}`); if (el.progressSubtitle) el.progressSubtitle.textContent = desc || snap.eventType; }
-  if (snap.eventType === 'TRANSACTION_ENDED') { activeTxn.terminalEnded = true; logEvent('Terminal ended, waiting for webhook...'); checkFinalState(); }
+  if (snap.eventType) {
+    const desc = terminalEventDesc(snap.eventType);
+    logEvent(`[terminal] ${snap.eventType}${desc ? ' - ' + desc : ''}`);
+    // Update progress subtitle with terminal status
+    if (el.progressSubtitle && currentView === AppView.PROGRESS) el.progressSubtitle.textContent = desc || snap.eventType;
+    // Save last terminal event for badge display
+    activeTxn._lastTerminalEvent = desc || snap.eventType;
+    const termStatus = document.getElementById('progressTerminalStatus');
+    if (termStatus) { termStatus.textContent = '🔌 Terminal: ' + activeTxn._lastTerminalEvent; termStatus.classList.add('visible'); }
+  }
+  if (snap.eventType === 'TRANSACTION_ENDED') { activeTxn.terminalEnded = true; logEvent('Terminal ended.'); checkFinalState(); }
   updateDevConsole();
 }
 

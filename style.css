@@ -109,22 +109,30 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .secondary-fields input { padding: 10px 12px; font-size: 13px; }
 
 /* === Progress View === */
-.progress-container { max-width: 480px; margin: 0 auto; text-align: center; padding-top: 20px; }
-.progress-header { margin-bottom: 32px; }
-.progress-type { display: inline-block; background: var(--primary-transparent); color: var(--primary); padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-.progress-amount { display: block; font-size: 36px; font-weight: 800; margin-top: 8px; }
-.progress-animation { margin-bottom: 32px; }
-.progress-spinner { width: 56px; height: 56px; border: 4px solid #F3F0EC; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 24px; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.progress-container { max-width: 480px; margin: 0 auto; padding-top: 10px; }
 
-/* Result icons (replace spinner on success/failure) */
-.progress-result-icon { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; margin: 0 auto 24px; animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+/* Order Info Card */
+.progress-order-info { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; }
+.progress-order-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
+.progress-order-row + .progress-order-row { border-top: 1px dashed var(--border); }
+.progress-order-label { font-size: 13px; color: var(--text-muted); }
+.progress-order-value { font-size: 13px; font-weight: 600; color: var(--text-main); max-width: 60%; text-align: right; word-break: break-all; }
+
+/* Status Area */
+.progress-status-area { text-align: center; padding: 24px 0; }
+.progress-icon-wrapper { margin: 0 auto 20px; width: 72px; height: 72px; display: flex; align-items: center; justify-content: center; }
+.progress-spinner { width: 56px; height: 56px; border: 4px solid #F3F0EC; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.progress-result-icon { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 .progress-result-icon.success { background: var(--success-bg); color: var(--success); box-shadow: 0 8px 20px rgba(30, 158, 97, 0.2); }
 .progress-result-icon.error { background: var(--error-bg); color: var(--error); box-shadow: 0 8px 20px rgba(224, 59, 59, 0.2); }
 @keyframes scaleIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-.progress-animation h2 { font-size: 20px; margin-bottom: 8px; }
-.progress-animation p { font-size: 14px; margin: 0; }
-.progress-actions { padding-top: 8px; }
+.progress-status-area h2 { font-size: 20px; margin-bottom: 8px; }
+.progress-status-area p { font-size: 14px; margin: 0; }
+.progress-terminal-status { margin-top: 16px; padding: 10px 16px; background: #F8F5F1; border-radius: 8px; font-size: 13px; color: var(--text-muted); display: none; }
+.progress-terminal-status.visible { display: block; }
+
+.progress-actions { padding-top: 16px; text-align: center; }
 
 /* Checkout Link (online mode) */
 .checkout-link-container { margin-bottom: 24px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }

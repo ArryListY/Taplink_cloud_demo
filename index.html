@@ -100,15 +100,34 @@
   <!-- View 3: Transaction Progress -->
   <main id="progressView" class="store-layout view hidden">
     <div class="progress-container">
-      <div class="progress-header">
-        <span class="progress-type" id="progressType">Sale</span>
-        <span class="progress-amount" id="progressAmount">$0.00</span>
+      <!-- Order Info -->
+      <div class="progress-order-info" id="progressOrderInfo">
+        <div class="progress-order-row">
+          <span class="progress-order-label">Type</span>
+          <span class="progress-order-value" id="progressType">Sale</span>
+        </div>
+        <div class="progress-order-row">
+          <span class="progress-order-label">Amount</span>
+          <span class="progress-order-value" id="progressAmount">$0.00</span>
+        </div>
+        <div class="progress-order-row">
+          <span class="progress-order-label">Order ID</span>
+          <span class="progress-order-value" id="progressOrderId">-</span>
+        </div>
+        <div class="progress-order-row">
+          <span class="progress-order-label">Request ID</span>
+          <span class="progress-order-value" id="progressReqId">-</span>
+        </div>
       </div>
-      
-      <div class="progress-animation">
-        <div class="progress-spinner"></div>
+
+      <!-- Status Display -->
+      <div class="progress-status-area">
+        <div class="progress-icon-wrapper" id="progressIconWrapper">
+          <div class="progress-spinner" id="progressSpinner"></div>
+        </div>
         <h2 id="progressTitle">Processing Payment</h2>
         <p id="progressSubtitle" class="text-muted">Connecting to payment terminal...</p>
+        <div class="progress-terminal-status" id="progressTerminalStatus"></div>
       </div>
 
       <div class="progress-actions">
