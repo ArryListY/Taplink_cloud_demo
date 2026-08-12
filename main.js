@@ -958,24 +958,7 @@ function checkFinalState() {
   const status = activeTxn.notifyStatus;
   if (!status) return;
   if (status !== TxnStatus.SUCCESS && status !== TxnStatus.FAILED) return;
-
-  // Both conditions met: terminal ended + webhook final status → confirm immediately
-  if (activeTxn.terminalEnded) {
-    confirmFinalState(status);
-    return;
-  }
-
-  // Only webhook arrived, terminal not ended yet → wait up to 8s for terminal event
-  // This gives the UI time to display terminal status updates
-  if (!activeTxn._finalTimer) {
-    logEvent(`[checkFinal] Webhook status=${status}, waiting for TRANSACTION_ENDED (max 8s)...`);
-    activeTxn._finalTimer = setTimeout(() => {
-      if (activeTxn && activeTxn.notifyStatus && !activeTxn._finalized) {
-        logEvent('[checkFinal] Timeout waiting for TRANSACTION_ENDED, confirming from webhook');
-        confirmFinalState(activeTxn.notifyStatus);
-      }
-    }, 8000);
-  }
+  confirmFinalState(status);
 }
 
 function confirmFinalState(status) {
