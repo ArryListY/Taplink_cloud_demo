@@ -821,11 +821,33 @@ function checkFinalState() {
   if (!activeTxn) return;
   const status = activeTxn.notifyStatus;
   if (!status) return;
-  // If we have a final status from webhook, update immediately
-  // (terminalEnded is informational; webhook is the authoritative result)
-  if (status === TxnStatus.SUCCESS || status === TxnStatus.FAILED) {
-    activeTxn.status = status; activeTxn.updatedAt = Date.now(); saveTransactions(); stopRecentEventPolling(); renderProgress(); updateDevConsole();
+  if (status !== TxnStatus.SUCCESS && status !== TxnStatus.FAILED) return;
+
+  // Both conditions met: terminal ended + webhook final status → confirm immediately
+  if (activeTxn.terminalEnded) {
+    confirmFinalState(status);
+    return;
   }
+
+  // Only webhook arrived, terminal not ended yet → wait up to 8s for terminal event
+  // This gives the UI time to display terminal status updates
+  if (!activeTxn._finalTimer) {
+    logEvent(`[checkFinal] Webhook status=${status}, waiting for TRANSACTION_ENDED (max 8s)...`);
+    activeTxn._finalTimer = setTimeout(() => {
+      if (activeTxn && activeTxn.notifyStatus && !activeTxn._finalized) {
+        logEvent('[checkFinal] Timeout waiting for TRANSACTION_ENDED, confirming from webhook');
+        confirmFinalState(activeTxn.notifyStatus);
+      }
+    }, 8000);
+  }
+}
+
+function confirmFinalState(status) {
+  if (!activeTxn || activeTxn._finalized) return;
+  activeTxn._finalized = true;
+  if (activeTxn._finalTimer) { clearTimeout(activeTxn._finalTimer); activeTxn._finalTimer = null; }
+  activeTxn.status = status; activeTxn.updatedAt = Date.now();
+  saveTransactions(); stopRecentEventPolling(); renderProgress(); updateDevConsole();
 }
 
 function matchesActiveTxn(reqId, refId, txnId) {
