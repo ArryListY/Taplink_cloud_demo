@@ -67,6 +67,8 @@ let transactions = [];
 let activeTxn = null;
 let currentDetailTxnId = null;
 let historyFilter = 'all';
+let historyPage = 1;
+const HISTORY_PAGE_SIZE = 20;
 let eventSource = null;
 let recentEventTimer = null;
 
@@ -451,12 +453,27 @@ function renderDetail() {
 
 function renderHistory() {
   if (!el.historyList) return;
-  const filtered = historyFilter === 'all' ? transactions : transactions.filter(t => t.status === historyFilter);
+  const filtered = (historyFilter === 'all' ? transactions : transactions.filter(t => t.status === historyFilter)).sort((a, b) => b.createdAt - a.createdAt);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / HISTORY_PAGE_SIZE));
+  if (historyPage > totalPages) historyPage = totalPages;
+  const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+  const pageItems = filtered.slice(start, start + HISTORY_PAGE_SIZE);
+
   if (filtered.length === 0) { el.historyList.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span><p>No transactions yet</p></div>`; return; }
-  el.historyList.innerHTML = filtered.sort((a, b) => b.createdAt - a.createdAt).map(txn => {
+
+  let html = pageItems.map(txn => {
     const sc = txn.status === TxnStatus.SUCCESS ? 'success' : txn.status === TxnStatus.FAILED ? 'error' : 'processing';
     return `<div class="history-card" data-txn-id="${txn.id}"><div class="history-card-status ${sc}"></div><div class="history-card-body"><div class="history-card-title">${txn.type} <span class="status-badge ${sc}">${txn.status}</span></div><div class="history-card-sub">${txn.requestId || '-'}</div></div><div class="history-card-right"><div class="history-card-amount">${formatMoney(getDisplayAmount(txn))}</div><div class="history-card-time">${formatDate(txn.createdAt)}</div></div></div>`;
   }).join('');
+
+  // Pagination controls
+  html += `<div class="history-pagination"><button class="pagination-btn" id="historyPrevBtn" ${historyPage <= 1 ? 'disabled' : ''}>← Prev</button><span class="pagination-info">${historyPage} / ${totalPages} (${filtered.length} total)</span><button class="pagination-btn" id="historyNextBtn" ${historyPage >= totalPages ? 'disabled' : ''}>Next →</button></div>`;
+
+  el.historyList.innerHTML = html;
+
+  // Bind pagination buttons
+  document.getElementById('historyPrevBtn')?.addEventListener('click', () => { historyPage--; renderHistory(); });
+  document.getElementById('historyNextBtn')?.addEventListener('click', () => { historyPage++; renderHistory(); });
 }
 
 // ============================================================
@@ -1055,7 +1072,12 @@ function bindEvents() {
   el.historyBtn?.addEventListener('click', () => navigateTo(AppView.HISTORY));
   el.historyBackBtn?.addEventListener('click', () => navigateTo(AppView.MENU));
   document.getElementById('batchCloseBtn')?.addEventListener('click', () => executeBatchClose());
-  el.historyFilters?.addEventListener('click', (e) => { const c = e.target.closest('.filter-chip'); if (!c) return; historyFilter = c.dataset.filter; el.historyFilters.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active')); c.classList.add('active'); renderHistory(); });
+  document.getElementById('clearHistoryBtn')?.addEventListener('click', () => {
+    if (!confirm('Clear all transaction records?')) return;
+    transactions = []; activeTxn = null; historyPage = 1;
+    saveTransactions(); renderHistory(); logEvent('All transactions cleared.');
+  });
+  el.historyFilters?.addEventListener('click', (e) => { const c = e.target.closest('.filter-chip'); if (!c) return; historyFilter = c.dataset.filter; historyPage = 1; el.historyFilters.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active')); c.classList.add('active'); renderHistory(); });
   el.historyList?.addEventListener('click', (e) => { const c = e.target.closest('.history-card'); if (c) navigateTo(AppView.DETAIL, { txnId: c.dataset.txnId }); });
   el.openDevConsoleBtn?.addEventListener('click', () => el.devConsole?.classList.add('visible'));
   el.closeDevConsoleBtn?.addEventListener('click', () => el.devConsole?.classList.remove('visible'));
