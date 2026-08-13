@@ -26,34 +26,45 @@ DINGTALK_AT_ALL = False
 
 
 class EventBus:
-    def __init__(self) -> None:
-        self._queues: set[asyncio.Queue[str]] = set()
-        self._history: deque[dict[str, Any]] = deque(maxlen=200)
+    """Thread-safe event bus supporting per-terminalSn filtering for multi-user access."""
 
-    async def publish(self, event_type: str, payload: dict[str, Any]) -> None:
+    def __init__(self) -> None:
+        self._subscribers: dict[asyncio.Queue[str], str] = {}  # queue -> terminalSn filter ("" means all)
+        self._history: deque[dict[str, Any]] = deque(maxlen=500)
+        self._lock = asyncio.Lock()
+
+    async def publish(self, event_type: str, payload: dict[str, Any], terminal_sn: str = "") -> None:
         item = {
             "type": event_type,
             "ts": int(time.time() * 1000),
             "payload": payload,
+            "terminalSn": terminal_sn,
         }
         self._history.append(item)
         encoded = self._encode(event_type, item)
-        for queue in list(self._queues):
-            try:
-                queue.put_nowait(encoded)
-            except asyncio.QueueFull:
-                self._queues.discard(queue)
+        async with self._lock:
+            for queue, filter_sn in list(self._subscribers.items()):
+                # Deliver if: no filter, or filter matches, or event has no terminalSn
+                if not filter_sn or not terminal_sn or filter_sn == terminal_sn:
+                    try:
+                        queue.put_nowait(encoded)
+                    except asyncio.QueueFull:
+                        del self._subscribers[queue]
 
-    async def subscribe(self) -> asyncio.Queue[str]:
+    async def subscribe(self, terminal_sn: str = "") -> asyncio.Queue[str]:
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=200)
-        self._queues.add(queue)
+        async with self._lock:
+            self._subscribers[queue] = terminal_sn
         return queue
 
     async def unsubscribe(self, queue: asyncio.Queue[str]) -> None:
-        self._queues.discard(queue)
+        async with self._lock:
+            self._subscribers.pop(queue, None)
 
-    def recent(self) -> list[dict[str, Any]]:
-        return list(self._history)
+    def recent(self, terminal_sn: str = "") -> list[dict[str, Any]]:
+        if not terminal_sn:
+            return list(self._history)
+        return [item for item in self._history if not item.get("terminalSn") or item["terminalSn"] == terminal_sn]
 
     @staticmethod
     def _encode(event_type: str, item: dict[str, Any]) -> str:
@@ -411,13 +422,13 @@ async def unsubscribe_terminal_events() -> JSONResponse:
 
 
 @app.get("/api/events/recent")
-async def recent_events() -> JSONResponse:
-    return JSONResponse({"items": bus.recent()})
+async def recent_events(terminalSn: str = "") -> JSONResponse:
+    return JSONResponse({"items": bus.recent(terminalSn)})
 
 
 @app.get("/api/events/stream")
-async def stream_events() -> StreamingResponse:
-    queue = await bus.subscribe()
+async def stream_events(terminalSn: str = "") -> StreamingResponse:
+    queue = await bus.subscribe(terminalSn)
 
     async def event_gen() -> Any:
         try:
@@ -498,7 +509,11 @@ async def _handle_incoming_webhook(request: Request, bus_event_type: str, defaul
         },
         "payload": payload,
     }
-    await bus.publish(bus_event_type, event_message)
+    # Extract terminalSn from payload for multi-user routing
+    terminal_sn = ""
+    if isinstance(payload, dict):
+        terminal_sn = payload.get("terminalSn", "") or ""
+    await bus.publish(bus_event_type, event_message, terminal_sn=terminal_sn)
 
     payload_event_type = _extract_payload_event_type(payload)
     dingtalk_event = payload_event_type or event_type or default_dingtalk_event

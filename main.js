@@ -887,8 +887,10 @@ function showMerchantResult(text) {
 // ============================================================
 function connectEventStream() {
   if (eventSource && eventSource.readyState !== EventSource.CLOSED) return;
+  const cfg = getConfig();
+  const sn = cfg.terminalSn ? `?terminalSn=${encodeURIComponent(cfg.terminalSn)}` : '';
   try {
-    eventSource = new EventSource(`${getConfig().backendUrl}/api/events/stream`);
+    eventSource = new EventSource(`${cfg.backendUrl}/api/events/stream${sn}`);
     eventSource.onopen = () => setEventBadge('connected');
     eventSource.onerror = () => setEventBadge('error');
     // Listen to all event types from backend
@@ -907,7 +909,9 @@ function stopRecentEventPolling() { if (recentEventTimer) { clearInterval(recent
 // Fallback polling: replay recent events every 10s in case SSE missed them
 async function replayRecentEvents() {
   if (!activeTxn || activeTxn.status === TxnStatus.SUCCESS || activeTxn.status === TxnStatus.FAILED) { stopRecentEventPolling(); return; }
-  try { const r = await fetch(`${getConfig().backendUrl}/api/events/recent`); const d = await r.json(); if (d.items) d.items.forEach(i => handleEventData(JSON.stringify(i))); } catch {}
+  const cfg = getConfig();
+  const sn = cfg.terminalSn ? `?terminalSn=${encodeURIComponent(cfg.terminalSn)}` : '';
+  try { const r = await fetch(`${cfg.backendUrl}/api/events/recent${sn}`); const d = await r.json(); if (d.items) d.items.forEach(i => handleEventData(JSON.stringify(i))); } catch {}
 }
 
 function handleEventData(raw) {
@@ -1055,7 +1059,7 @@ function bindEvents() {
   el.configModal?.addEventListener('click', (e) => { if (e.target.closest('[data-modal-close]')) closeModal(el.configModal); });
   document.getElementById('queryMerchantBtn')?.addEventListener('click', queryMerchant);
   document.getElementById('queryTerminalsBtn')?.addEventListener('click', queryMerchantTerminals);
-  ['backendUrl','envType','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(id => { const n = el[id]; if (n) { n.addEventListener('input', saveConfig); n.addEventListener('change', saveConfig); } });
+  ['backendUrl','envType','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(id => { const n = el[id]; if (n) { n.addEventListener('input', saveConfig); n.addEventListener('change', () => { saveConfig(); if (id === 'terminalSn' || id === 'backendUrl') { disconnectEventStream(); connectEventStream(); } }); } });
   ['tipEnabled','tipSuggestionsEnabled','taxEnabled','signatureEnabled'].forEach(id => { document.getElementById(id)?.addEventListener('change', () => { toggleSubSettings(); saveSettings(); }); });
   ['tipMode','tipOnScreenTip','tipWithTax','tipFeeMode','tipSuggestion1','tipSuggestion2','tipSuggestion3','taxRate','printReceipt','signatureMode','signatureThresholdEnabled','signatureThreshold'].forEach(id => { const n = document.getElementById(id); if (n) { n.addEventListener('change', saveSettings); n.addEventListener('input', saveSettings); } });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(el.configModal); });
