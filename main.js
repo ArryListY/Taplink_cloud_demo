@@ -244,6 +244,14 @@ function buildSignatureConfig() {
 }
 
 // === View Navigation ===
+function resetOrder() {
+  cart = {};
+  orderAmounts = { tipAmount: 0, taxAmount: 0, surchargeAmount: 0, cashbackAmount: 0 };
+  // Reset input fields
+  const ids = ['tipAmountInput', 'taxAmountInput', 'surchargeInput', 'cashbackInput'];
+  ids.forEach(id => { const e = document.getElementById(id); if (e) e.value = '0'; });
+}
+
 function navigateTo(view, opts = {}) {
   currentView = view;
   ['menuView','checkoutView','detailView','historyView'].forEach(v => { if (el[v]) el[v].classList.add('hidden'); });
@@ -251,7 +259,7 @@ function navigateTo(view, opts = {}) {
   // Close progress modal when navigating away from progress
   if (view !== AppView.PROGRESS) closeProgressModal();
   switch (view) {
-    case AppView.MENU: el.menuView.classList.remove('hidden'); renderMenu(); break;
+    case AppView.MENU: el.menuView.classList.remove('hidden'); resetOrder(); renderMenu(); break;
     case AppView.CHECKOUT: el.checkoutView.classList.remove('hidden'); renderCheckout(); break;
     case AppView.PROGRESS: openProgressModal(); renderProgress(); break;
     case AppView.DETAIL: currentDetailTxnId = opts.txnId || currentDetailTxnId; el.detailView.classList.remove('hidden'); renderDetail(); break;
@@ -437,7 +445,7 @@ function renderDetail() {
   document.getElementById('detailPostAuthBtn')?.addEventListener('click', () => executePostAuthFromDetail(txn));
   document.getElementById('detailIncrAuthBtn')?.addEventListener('click', () => executeIncrementalAuthFromDetail(txn));
   document.getElementById('detailQueryBtn')?.addEventListener('click', () => runQuery(txn.requestId));
-  document.getElementById('detailBackBtn')?.addEventListener('click', () => { cart = {}; navigateTo(AppView.MENU); });
+  document.getElementById('detailBackBtn')?.addEventListener('click', () => navigateTo(AppView.MENU));
   document.getElementById('detailHistoryBtn')?.addEventListener('click', () => navigateTo(AppView.HISTORY));
 }
 
