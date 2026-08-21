@@ -1,0 +1,1262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TapLink Pinpad Standby Customization Demo</title>
+  <style>
+    :root {
+      --connect: #13c4b8;
+      --connect-dark: #0aa89e;
+      --ink: #202427;
+      --muted: #8a9094;
+      --line: #e7e9eb;
+      --canvas: #f1f3f5;
+      --panel: #ffffff;
+      --danger: #d83b3b;
+      --sunmi: #ff6000;
+      --radius: 8px;
+      --shadow: 0 8px 32px rgba(28, 38, 44, .08);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--canvas); }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .hidden { display: none !important; }
+
+    .prototype-banner {
+      position: fixed;
+      z-index: 100;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border: 1px solid rgba(0, 0, 0, .08);
+      border-radius: 999px;
+      background: rgba(20, 26, 29, .88);
+      color: #fff;
+      box-shadow: 0 8px 26px rgba(0, 0, 0, .18);
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+    }
+    .self-check { color: #92f2c6; }
+
+    /* Connect shell */
+    .connect-shell { min-height: 100vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); margin-right: 0; background: var(--canvas); transition: margin-right .25s ease; }
+    .sidebar { position: sticky; top: 0; height: 100vh; padding: 28px 20px; background: #fff; border-right: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 10px; margin: 0 8px 38px; font-weight: 800; line-height: 1; }
+    .brand-mark { position: relative; width: 42px; height: 30px; }
+    .brand-mark::before, .brand-mark::after { content: ""; position: absolute; top: 4px; width: 24px; height: 24px; border: 7px solid; border-radius: 50%; }
+    .brand-mark::before { left: 0; border-color: #ffb400; }
+    .brand-mark::after { right: 0; border-color: #05c7c0; }
+    .brand-copy small { display: block; margin-bottom: 2px; font-size: 8px; letter-spacing: .08em; }
+    .brand-copy strong { font-size: 16px; }
+    .nav-label, .nav-item { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 14px; border-radius: 6px; font-size: 14px; }
+    .nav-label { font-weight: 600; }
+    .nav-item { margin: 3px 0; padding-left: 34px; color: #383d40; }
+    .nav-item.active { background: var(--connect); color: #fff; font-weight: 600; }
+    .sidebar-footer { position: absolute; bottom: 22px; left: 28px; color: #a0a4a7; font-size: 12px; }
+
+    .connect-main { min-width: 0; }
+    .topbar { height: 62px; display: flex; align-items: center; justify-content: space-between; padding: 0 26px; background: #fff; border-bottom: 1px solid var(--line); }
+    .topbar h1 { margin: 0; font-size: 21px; }
+    .sun-icon { color: #ff5b17; font-size: 22px; }
+    .subbar { height: 50px; display: flex; align-items: center; gap: 12px; padding: 0 26px; background: #fff; font-size: 15px; font-weight: 650; }
+    .subbar button { border: 0; background: transparent; font-size: 22px; }
+    .content { padding: 20px 26px 76px; }
+    .watermarked { background-image: repeating-linear-gradient(-25deg, transparent, transparent 185px, rgba(110, 120, 126, .035) 186px, rgba(110, 120, 126, .035) 188px); }
+    .panel { padding: 24px; background: var(--panel); border: 1px solid #edf0f1; border-radius: var(--radius); box-shadow: 0 1px 2px rgba(0, 0, 0, .02); }
+    .panel + .panel { margin-top: 20px; }
+    .panel-title { margin: 0 0 18px; font-size: 16px; }
+    .muted { color: var(--muted); }
+    .tag { display: inline-flex; align-items: center; min-height: 23px; padding: 0 9px; border: 1px solid #d8dcdf; border-radius: 4px; background: #fafafa; font-size: 12px; }
+    .status { color: #35ae26; background: #f0ffe8; border-color: #9de879; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 0 16px; border: 1px solid #d8dcdf; border-radius: 6px; background: #fff; color: var(--ink); font-weight: 600; }
+    .btn:hover { border-color: var(--connect); }
+    .btn-primary { border-color: var(--connect); background: var(--connect); color: #fff; }
+    .btn-primary:hover { border-color: var(--connect-dark); background: var(--connect-dark); }
+    .btn-danger { border-color: #f0c1c1; color: var(--danger); }
+    .btn-quiet { background: #f7f8f9; }
+    .btn-small { min-height: 29px; padding: 0 10px; font-size: 12px; }
+
+    /* Application details */
+    .application-summary { display: grid; grid-template-columns: 1.25fr 1fr auto; align-items: start; gap: 38px; }
+    .app-identity { display: flex; gap: 18px; align-items: center; }
+    .app-icon { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 14px; background: linear-gradient(145deg, #ff8429, #ff4b0b); color: #fff; font-weight: 800; font-size: 12px; line-height: 1.05; text-align: center; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35); }
+    .app-identity h2 { margin: 0 0 7px; font-size: 20px; }
+    .app-identity p { margin: 0 0 9px; font-size: 13px; }
+    .summary-meta p { margin: 5px 0 13px; }
+    .summary-meta .label { color: var(--muted); }
+    .distribution-card { width: 240px; min-height: 220px; display: grid; place-items: center; padding: 20px; border: 1px solid var(--line); border-radius: 7px; text-align: center; }
+    .store-icon { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 9px; background: linear-gradient(#ff7627, #fb4409); color: white; font-size: 25px; }
+    .table-placeholder { min-height: 190px; display: grid; place-items: center; border-top: 1px solid #f0f1f2; color: #a0a5a8; }
+
+    /* Edit form */
+    .form-wrap { width: min(760px, 100%); margin: 0 auto; }
+    .field { margin-bottom: 22px; }
+    .field label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+    .required::before { content: "* "; color: #ef3f36; }
+    .input, .textarea { width: 100%; border: 1px solid #d5d9dc; border-radius: 6px; background: #fff; color: var(--ink); outline: none; }
+    .input { height: 40px; padding: 0 12px; }
+    .textarea { min-height: 78px; padding: 12px; resize: vertical; }
+    .input:focus, .textarea:focus { border-color: var(--connect); box-shadow: 0 0 0 2px rgba(19, 196, 184, .1); }
+    .type-card { position: relative; display: flex; gap: 14px; padding: 18px; border: 2px solid var(--connect); border-radius: 8px; background: #f5fffe; }
+    .type-card strong { display: block; margin-bottom: 7px; }
+    .type-card p { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+    .check { margin-left: auto; color: var(--connect); font-size: 20px; }
+
+    .customization { margin-top: 30px; padding-top: 28px; border-top: 1px solid var(--line); }
+    .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+    .section-heading h2 { margin: 0 0 6px; font-size: 18px; }
+    .section-heading p { margin: 0; font-size: 13px; line-height: 1.5; }
+    .prototype-pill { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: #fff6d9; color: #8b6600; font-size: 11px; font-weight: 700; }
+    .device-selector { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 16px 0 24px; }
+    .device-chip { position: relative; padding: 13px 10px; border: 1px solid #d8dcdf; border-radius: 7px; background: #fff; text-align: left; }
+    .device-chip.selected { border-color: var(--connect); background: #f0fffd; box-shadow: 0 0 0 1px var(--connect); }
+    .device-chip strong { display: block; font-size: 13px; }
+    .device-chip span { color: var(--muted); font-size: 11px; }
+    .device-chip .chip-check { position: absolute; right: 8px; top: 8px; color: var(--connect); opacity: 0; }
+    .device-chip.selected .chip-check { opacity: 1; }
+
+    .orientation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .upload-card { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfc; }
+    .upload-card h3 { margin: 0 0 5px; font-size: 15px; }
+    .upload-card .hint { margin: 0 0 14px; font-size: 12px; color: var(--muted); }
+    .drop-zone { display: grid; place-items: center; min-height: 108px; padding: 14px; border: 1px dashed #aab3b6; border-radius: 7px; background: #fff; text-align: center; }
+    .drop-zone.dragging { border-color: var(--connect); background: #effffd; }
+    .drop-zone input { display: none; }
+    .drop-zone strong { display: block; margin-bottom: 4px; font-size: 13px; }
+    .drop-zone span { color: var(--muted); font-size: 11px; }
+    .resource-list { display: grid; gap: 9px; margin-top: 13px; }
+    .carousel-settings { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px; border-radius: 6px; background: #effffd; color: #245451; font-size: 12px; }
+    .carousel-settings label { margin: 0; font-weight: 700; }
+    .carousel-settings input { width: 58px; height: 30px; padding: 0 7px; border: 1px solid #9fded9; border-radius: 5px; background: #fff; color: var(--ink); }
+    .resource-empty { padding: 15px; border-radius: 6px; background: #f3f5f6; color: var(--muted); text-align: center; font-size: 12px; }
+    .resource-item { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+    .resource-item.single-image { grid-template-columns: 1fr auto; align-items: start; }
+    .resource-item.single-image .thumb { grid-column: 1 / -1; width: 100%; height: 180px; object-fit: contain; background: #16191b; }
+    .thumb { width: 48px; height: 40px; border-radius: 5px; object-fit: cover; background: #17191b; }
+    .resource-copy { min-width: 0; }
+    .resource-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .resource-copy span { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+    .resource-actions { display: flex; gap: 4px; }
+    .icon-btn { width: 26px; height: 26px; padding: 0; border: 1px solid #dfe2e4; border-radius: 5px; background: #fff; }
+    .icon-btn:disabled { opacity: .35; cursor: default; }
+    .validation { min-height: 17px; margin-top: 7px; color: var(--danger); font-size: 11px; }
+    .constraint-note { margin-top: 16px; padding: 12px 14px; border-left: 3px solid #e8b42e; background: #fff9e8; color: #6d5a21; font-size: 12px; line-height: 1.5; }
+    .form-actions { display: flex; align-items: center; gap: 10px; margin-top: 24px; }
+
+    .json-panel { margin-top: 22px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .json-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 13px; background: #f4f6f7; font-size: 12px; font-weight: 700; }
+    pre { margin: 0; padding: 16px; overflow: auto; background: #162126; color: #bcefe8; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    /* Connect-side live terminal preview sidebar: it owns layout width and never overlays Connect. */
+    body { --preview-sidebar-width: min(460px, 42vw); }
+    body.preview-open { overflow-x: hidden; }
+    body.preview-open .connect-shell { margin-right: var(--preview-sidebar-width); }
+    .tapro-page {
+      position: fixed; z-index: 80; inset: 0 0 0 auto; width: var(--preview-sidebar-width); height: 100vh;
+      padding: 18px 18px 72px; overflow-y: auto; overscroll-behavior: contain;
+      background: radial-gradient(circle at top, #27333a, #101719 62%); color: #fff;
+      border-left: 1px solid rgba(255, 255, 255, .12);
+      transform: translateX(105%); visibility: hidden; pointer-events: none;
+      transition: transform .25s ease, visibility 0s linear .25s;
+    }
+    .tapro-page.open { transform: translateX(0); visibility: visible; pointer-events: auto; transition-delay: 0s; }
+    .tapro-page.hidden { display: block !important; }
+    .sim-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin: 0 0 16px; }
+    .sim-header h1 { margin: 0 0 5px; font-size: 18px; }
+    .sim-header p { margin: 0; color: #a9b8bf; font-size: 11px; line-height: 1.5; }
+    .sim-header-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+    .sim-layout { display: grid; gap: 14px; align-items: start; }
+    .device-stage { min-height: 0; display: grid; place-items: center; padding: 16px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 14px; background: rgba(255, 255, 255, .035); }
+    .device-shell { position: relative; padding: 10px; border-radius: 24px; background: #080a0b; box-shadow: 0 18px 42px rgba(0, 0, 0, .45), inset 0 0 0 1px #3d4549; transition: width .25s ease, height .25s ease; }
+    .device-shell.p3kh { width: min(250px, 100%); aspect-ratio: 9 / 16; }
+    .device-shell.p3h { width: min(230px, 100%); aspect-ratio: 9 / 20; }
+    .device-shell.landscape { width: min(390px, 100%); aspect-ratio: 16 / 10; }
+    .device-camera { position: absolute; z-index: 5; top: 6px; left: 50%; width: 34px; height: 4px; transform: translateX(-50%); border-radius: 999px; background: #31383b; }
+    .device-screen { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: 17px; background: var(--sunmi); user-select: none; }
+    .media-modal { position: fixed; z-index: 260; inset: 0; display: grid; place-items: center; padding: 4vh 4vw; background: rgba(10, 16, 19, .78); backdrop-filter: blur(7px); }
+    .media-modal-content { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
+    .media-modal .device-shell { box-sizing: border-box; max-width: 70vw; max-height: 70vh; padding: clamp(8px, 1vw, 14px); }
+    .media-modal .device-shell.p3kh { width: min(70vw, 39.375vh); height: 70vh; }
+    .media-modal .device-shell.p3h { width: min(70vw, 31.5vh); height: 70vh; }
+    .media-modal .device-shell.landscape { width: min(70vw, 112vh); height: auto; }
+    .media-modal-close { position: absolute; top: 0; right: 0; min-height: 36px; padding: 0 13px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 6px; background: rgba(20, 20, 20, .62); color: #fff; font-weight: 700; }
+    .default-standby, .custom-media { position: absolute; inset: 0; }
+    .default-standby { display: grid; place-items: center; overflow: hidden; background: var(--sunmi); }
+    .wave { position: absolute; left: -15%; width: 130%; border-radius: 48%; background: rgba(255, 255, 255, .08); animation: drift 8s linear infinite; }
+    .wave.one { top: -25%; height: 58%; }
+    .wave.two { top: 24%; height: 48%; background: rgba(255, 255, 255, .045); animation-duration: 11s; animation-direction: reverse; }
+    .wave.three { bottom: -35%; height: 58%; background: rgba(255, 255, 255, .035); animation-duration: 14s; }
+    @keyframes drift { to { transform: rotate(360deg); } }
+    .standby-hero { position: relative; z-index: 2; display: grid; justify-items: center; text-align: center; }
+    .status-ripple { position: relative; width: 112px; height: 112px; display: grid; place-items: center; }
+    .status-ripple::before, .status-ripple::after { content: ""; position: absolute; width: 45px; height: 45px; border: 2px solid rgba(255, 255, 255, .65); border-radius: 50%; animation: ripple 2.1s ease-out infinite; }
+    .status-ripple::after { animation-delay: .75s; }
+    @keyframes ripple { from { transform: scale(.65); opacity: .9; } to { transform: scale(2.2); opacity: 0; } }
+    .status-dot { position: relative; z-index: 2; width: 40px; height: 40px; border: 9px solid rgba(255, 255, 255, .26); border-radius: 50%; background: #fff; background-clip: padding-box; }
+    .standby-title { margin-top: 15px; font-size: clamp(18px, 3vw, 28px); font-weight: 800; }
+    .standby-subtitle { margin-top: 7px; color: #ffe0cc; font-size: clamp(10px, 1.5vw, 14px); }
+    .mode-badge { margin-top: 15px; padding: 5px 11px; border: 1px solid rgba(255, 255, 255, .38); border-radius: 999px; background: rgba(255, 255, 255, .18); font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+    .brand-stamp { position: absolute; z-index: 2; bottom: 22px; left: 50%; transform: translateX(-50%); color: rgba(255, 255, 255, .85); font-weight: 800; letter-spacing: .14em; font-size: 11px; }
+
+    .custom-media { background: #050606; }
+    .device-screen.custom-active .default-standby { display: none !important; }
+    .device-screen.custom-active .custom-media { display: block !important; }
+    .device-screen.custom-active .screen-controls:not(.visible) { opacity: 0 !important; pointer-events: none !important; }
+    .custom-media img { width: 100%; height: 100%; display: block; object-fit: cover; animation: media-fade .45s ease; }
+    @keyframes media-fade { from { opacity: 0; } to { opacity: 1; } }
+    .screen-controls { position: absolute; z-index: 10; inset: 0; pointer-events: none; opacity: 0; transition: opacity .2s; }
+    .screen-controls.visible { pointer-events: auto; opacity: 1; }
+    .screen-action { position: absolute; top: 16px; width: 43px; height: 43px; display: grid; place-items: center; border: 1px solid rgba(255, 255, 255, .35); border-radius: 50%; background: rgba(20, 20, 20, .38); color: #fff; font-size: 20px; backdrop-filter: blur(7px); }
+    .screen-back { left: 16px; }
+    .screen-menu { right: 16px; }
+    .drawer { position: absolute; z-index: 9; padding: 22px; background: rgba(46, 25, 10, .96); color: #fff; box-shadow: 0 -12px 32px rgba(0, 0, 0, .28); transition: transform .25s ease; }
+    .p3kh .drawer, .p3h .drawer { left: 0; right: 0; bottom: 0; min-height: 38%; transform: translateY(105%); border-radius: 18px 18px 0 0; }
+    .landscape .drawer { left: 0; top: 0; bottom: 0; width: min(42%, 350px); transform: translateX(-105%); }
+    .drawer.open { transform: translate(0); }
+    .drawer h3 { margin: 0 0 15px; font-size: 16px; }
+    .connection-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, .12); font-size: 11px; }
+    .connection-row span { color: #ffd9bf; }
+
+    .sim-panel { padding: 20px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 12px; background: rgba(255, 255, 255, .055); }
+    .sim-panel h2 { margin: 0 0 15px; font-size: 16px; }
+    .segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 8px; background: rgba(0, 0, 0, .25); }
+    .segmented button { min-height: 38px; border: 0; border-radius: 6px; background: transparent; color: #a9b8bf; font-weight: 700; }
+    .segmented button.active { background: var(--connect); color: #fff; }
+    .sim-status { margin-top: 16px; padding: 13px; border-radius: 8px; background: rgba(0, 0, 0, .23); font-size: 12px; line-height: 1.55; }
+    .sim-status strong { display: block; color: #83eadf; }
+    .sim-kv { display: grid; grid-template-columns: 90px 1fr; gap: 7px; margin-top: 12px; color: #afbdc3; font-size: 11px; }
+    .sim-kv b { color: #fff; overflow-wrap: anywhere; }
+    .sim-help { margin: 16px 0 0; color: #a9b8bf; font-size: 11px; line-height: 1.6; }
+    .sim-panel .btn { width: 100%; margin-top: 10px; }
+
+    .toast { position: fixed; z-index: 200; top: 18px; left: 50%; transform: translate(-50%, -16px); padding: 11px 16px; border-radius: 7px; background: #20282b; color: #fff; box-shadow: var(--shadow); font-size: 13px; opacity: 0; pointer-events: none; transition: .2s ease; }
+    .toast.show { transform: translate(-50%, 0); opacity: 1; }
+
+    @media (max-width: 1050px) {
+      .connect-shell { grid-template-columns: 210px minmax(0, 1fr); }
+      .sidebar { padding-inline: 12px; }
+      .application-summary { grid-template-columns: 1fr auto; }
+      .summary-meta { grid-column: 1; }
+      .orientation-grid { grid-template-columns: 1fr; }
+      .device-selector { grid-template-columns: 1fr 1fr; }
+      body { --preview-sidebar-width: min(440px, 48vw); }
+      .sim-panel { width: 100%; margin: 0; }
+      .device-shell.landscape { width: min(370px, 100%); }
+    }
+
+    @media (max-width: 900px) {
+      body.preview-open .connect-shell { margin-right: 0; }
+      .tapro-page {
+        position: relative; inset: auto; width: 100%; height: auto; min-height: 100vh; display: none;
+        transform: none; visibility: visible; pointer-events: auto; transition: none;
+      }
+      .tapro-page.open { display: block; transform: none; }
+      .tapro-page.hidden { display: none !important; }
+    }
+
+    @media (max-width: 720px) {
+      .connect-shell { display: block; }
+      .sidebar { position: static; width: 100%; height: auto; padding: 14px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .brand { margin: 0 6px 14px; }
+      .nav-label, .nav-item:not(.active), .sidebar-footer { display: none; }
+      .nav-item.active { padding-left: 14px; }
+      .topbar, .subbar { padding-inline: 16px; }
+      .content { padding: 14px 12px 78px; }
+      .panel { padding: 17px; }
+      .application-summary { display: block; }
+      .summary-meta, .application-summary > .btn { margin-top: 20px; }
+      .distribution-card { width: 100%; }
+      .device-selector { grid-template-columns: 1fr 1fr; }
+      body { --preview-sidebar-width: 100%; }
+      body.preview-open .connect-shell { margin-right: 0; }
+      .tapro-page {
+        position: relative; inset: auto; width: 100%; height: auto; min-height: 100vh; display: none;
+        padding-inline: 12px; transform: none; visibility: visible; pointer-events: auto; transition: none;
+      }
+      .tapro-page.open { display: block; transform: none; }
+      .tapro-page.hidden { display: none !important; }
+      .sim-header { align-items: flex-start; }
+      .sim-header-actions { width: auto; }
+      .device-stage { min-height: 0; padding: 12px; }
+      .device-shell.landscape { width: min(390px, 94vw); border-radius: 18px; padding: 8px; }
+      .device-shell.p3kh { width: min(250px, 78vw); }
+      .device-shell.p3h { width: min(230px, 72vw); }
+      .prototype-banner { width: calc(100% - 24px); justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div id="connectApp" class="connect-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-copy"><small>SUNBAY</small><strong>Connect</strong></span>
+      </div>
+      <div class="nav-label">▦ <span>Workspace</span></div>
+      <div class="nav-item active">Applications</div>
+      <div class="nav-item">Payment Integration</div>
+      <div class="nav-item">App Distribution</div>
+      <div class="nav-label" style="margin-top: 18px">⚙ <span>Settings</span></div>
+      <div class="sidebar-footer">Interactive concept prototype</div>
+    </aside>
+
+    <main class="connect-main">
+      <header class="topbar"><h1>Application</h1><span class="sun-icon">☀</span></header>
+      <div class="subbar"><button id="subbarBack" aria-label="Back">←</button><span id="subbarTitle">Application Details</span></div>
+
+      <section id="detailsScreen" class="content watermarked">
+        <div class="panel application-summary">
+          <div class="app-identity">
+            <div class="app-icon">TapLink<br>POS</div>
+            <div>
+              <h2 id="detailsAppName">TapLink POS</h2>
+              <p class="muted">APP ID: <span id="detailsAppId">smfu7g3g9wbwj9eb</span></p>
+              <div><span class="tag">Native</span> <span class="tag">Local Integration</span> <span class="tag">Cloud Integration</span></div>
+            </div>
+          </div>
+          <div class="summary-meta">
+            <p><span class="label">Status:</span> <span class="tag status">Published</span></p>
+            <p><span class="label">Created on:</span> 03/10/2026, 14:19</p>
+            <p><span class="label">Description:</span> <span id="detailsDescription">TapLink Demo</span></p>
+          </div>
+          <button id="editProfileBtn" class="btn">Edit profile</button>
+        </div>
+
+        <div class="panel">
+          <h2 class="panel-title">App Distribution Channels</h2>
+          <div class="distribution-card">
+            <div>
+              <div class="store-icon">⌣</div>
+              <h3>SUNMI App Store</h3>
+              <span class="tag status">●&nbsp; Published</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center"><span><span class="tag">Invitation History</span> <span class="tag">Active Partners (2)</span></span><button class="btn btn-primary btn-small">⊕ Share &amp; Invite</button></div>
+          <div class="table-placeholder">▱<br>No data</div>
+        </div>
+
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center"><span><span class="tag">Supported Features</span> <span class="tag">Authorized API List</span></span><button class="btn btn-primary btn-small">View Test Suites</button></div>
+          <div style="margin-top:16px;overflow:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead><tr style="background:#fafafa;text-align:left"><th style="padding:10px">API Name</th><th>API Type</th><th>Description</th><th>Authorization Mode</th></tr></thead>
+              <tbody>
+                <tr style="border-top:1px solid #eee"><td style="padding:10px">/v1/semi-integration/transaction/sale</td><td><span class="tag">Cloud</span></td><td>Semi-integrated payment sale transaction</td><td><span class="tag">Test Required</span></td></tr>
+                <tr style="border-top:1px solid #eee"><td style="padding:10px">/v1/semi-integration/transaction/auth</td><td><span class="tag">Cloud</span></td><td>Semi-integrated payment pre-authorization</td><td><span class="tag">Test Required</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="editScreen" class="content watermarked hidden">
+        <div class="panel">
+          <div class="form-wrap">
+            <div class="field">
+              <label class="required" for="appName">Application Name</label>
+              <input id="appName" class="input" value="TapLink POS">
+            </div>
+            <div class="field">
+              <label for="appDescription">Application Description</label>
+              <textarea id="appDescription" class="textarea">TapLink Demo</textarea>
+            </div>
+            <div class="field">
+              <label class="required">Icon</label>
+              <div class="app-icon" style="width:72px;height:72px">TapLink<br>POS</div>
+              <div class="muted" style="margin-top:6px;font-size:12px">64 × 64px recommended</div>
+            </div>
+            <div class="field">
+              <label class="required">Application Type</label>
+              <div class="type-card">
+                <span style="font-size:22px">▣</span>
+                <div><strong>Native</strong><p>Applications installed on a device that can be deployed on smart terminals, POS devices, desktop computers, or other local environments.</p></div>
+                <span class="check">☑</span>
+              </div>
+            </div>
+
+            <div class="customization">
+              <div class="section-heading">
+                <div>
+                  <h2>Pinpad Standby Customization</h2>
+                  <p class="muted">Upload customer media for the TaPro Pinpad standby page. Required orientations are based on selected target devices.</p>
+                </div>
+                <button id="openPreviewBtn" type="button" class="btn btn-small btn-quiet">Open live preview</button>
+              </div>
+
+              <label style="font-size:13px;font-weight:700">Target device models</label>
+              <div id="deviceSelector" class="device-selector">
+                <button type="button" class="device-chip selected" data-model="P3KH" data-profile="p3kh"><strong>P3K / P3KH</strong><span>720 × 1280 · 9:16</span><b class="chip-check">✓</b></button>
+                <button type="button" class="device-chip selected" data-model="P3H" data-profile="p3h"><strong>P3H / P3HD / P3Air</strong><span>720 × 1600 · 9:20</span><b class="chip-check">✓</b></button>
+                <button type="button" class="device-chip selected" data-model="P3Mix" data-profile="landscape"><strong>P3Mix</strong><span>Landscape · 16:10</span><b class="chip-check">✓</b></button>
+                <button type="button" class="device-chip" data-model="CPadPay" data-profile="landscape"><strong>CPadPay</strong><span>Landscape · 16:10</span><b class="chip-check">✓</b></button>
+              </div>
+              <div id="deviceValidation" class="validation"></div>
+
+              <div class="orientation-grid">
+                <section id="p3khUploader" class="upload-card">
+                  <h3>P3KH resources <span class="muted">(720 × 1280 px)</span></h3>
+                  <p class="hint">P3K / P3KH · image size must match exactly.</p>
+                  <label class="drop-zone" data-profile="p3kh">
+                    <input id="p3khInput" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+                    <span><strong>＋ Upload P3KH images</strong><span>Images: exact 720 × 1280 px · up to 10</span></span>
+                  </label>
+                  <div id="p3khList" class="resource-list"></div>
+                  <div id="p3khCarouselSettings" class="carousel-settings hidden">
+                    <label for="p3khInterval">Image display time</label>
+                    <input id="p3khInterval" type="number" min="3" max="60" step="1" value="5" inputmode="numeric">
+                    <span>seconds</span>
+                  </div>
+                  <div id="p3khValidation" class="validation"></div>
+                </section>
+
+                <section id="p3hUploader" class="upload-card">
+                  <h3>P3H resources <span class="muted">(720 × 1600 px)</span></h3>
+                  <p class="hint">P3H / P3HD / P3Air · independent from P3KH.</p>
+                  <label class="drop-zone" data-profile="p3h">
+                    <input id="p3hInput" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+                    <span><strong>＋ Upload P3H images</strong><span>Images: exact 720 × 1600 px · up to 10</span></span>
+                  </label>
+                  <div id="p3hList" class="resource-list"></div>
+                  <div id="p3hCarouselSettings" class="carousel-settings hidden">
+                    <label for="p3hInterval">Image display time</label>
+                    <input id="p3hInterval" type="number" min="3" max="60" step="1" value="5" inputmode="numeric">
+                    <span>seconds</span>
+                  </div>
+                  <div id="p3hValidation" class="validation"></div>
+                </section>
+
+                <section id="landscapeUploader" class="upload-card">
+                  <h3>Landscape resources <span class="muted">(1920 × 1200 px)</span></h3>
+                  <p class="hint">P3Mix / CPadPay · fixed 16:10 source image.</p>
+                  <label class="drop-zone" data-profile="landscape">
+                    <input id="landscapeInput" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+                    <span><strong>＋ Upload landscape images</strong><span>Images: exact 1920 × 1200 px · up to 10</span></span>
+                  </label>
+                  <div id="landscapeList" class="resource-list"></div>
+                  <div id="landscapeCarouselSettings" class="carousel-settings hidden">
+                    <label for="landscapeInterval">Image display time</label>
+                    <input id="landscapeInterval" type="number" min="3" max="60" step="1" value="5" inputmode="numeric">
+                    <span>seconds</span>
+                  </div>
+                  <div id="landscapeValidation" class="validation"></div>
+                </section>
+              </div>
+
+              <div class="constraint-note"><strong>Current prototype:</strong> each device profile accepts 1–10 fixed-size images. Use the up/down controls to set playback order. When a profile has multiple images, set its image display time from 3–60 seconds; the terminal sidebar and page-overlay device preview use the same ordered carousel. Video remains a future capability and is not accepted by this upload control.</div>
+
+              <div class="json-panel">
+                <div class="json-head"><span>TaplinkSignInResponse preview</span><button id="copyJsonBtn" type="button" class="btn btn-small btn-quiet">Copy JSON</button></div>
+                <pre id="jsonPreview"></pre>
+              </div>
+
+              <div class="form-actions">
+                <button id="saveOpenBtn" type="button" class="btn btn-primary">Save Application</button>
+                <button id="clearResourcesBtn" type="button" class="btn btn-danger">Clear all resources</button>
+                <button id="cancelEditBtn" type="button" class="btn">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <aside id="taproPage" class="tapro-page hidden" aria-label="Live terminal preview" aria-hidden="true">
+    <header class="sim-header">
+      <div>
+        <h1>Live terminal preview</h1>
+        <p>Connect stays visible beside this independent, non-overlay sidebar while it renders the selected local device profile.</p>
+      </div>
+      <div class="sim-header-actions">
+        <button id="openDevicePreviewBtn" class="btn btn-small" aria-label="Open full device preview" disabled>Open full preview</button>
+        <button id="backToConnectBtn" class="btn btn-small" aria-label="Close live preview">Close</button>
+      </div>
+    </header>
+
+    <div class="sim-layout">
+      <div class="device-stage">
+        <div id="deviceShell" class="device-shell p3kh">
+          <span class="device-camera"></span>
+          <div id="deviceScreen" class="device-screen" title="Double-click customer media to reveal controls">
+            <div id="defaultStandby" class="default-standby">
+              <span class="wave one"></span><span class="wave two"></span><span class="wave three"></span>
+              <div class="standby-hero">
+                <div class="status-ripple"><span class="status-dot"></span></div>
+                <div class="standby-title">Waiting for Connect</div>
+                <div class="standby-subtitle">Listening for ECR connection...</div>
+                <div class="mode-badge">PINPAD</div>
+              </div>
+              <div class="brand-stamp">SUNMI · TAPLINK</div>
+            </div>
+            <div id="customMedia" class="custom-media hidden"></div>
+
+            <div id="drawer" class="drawer">
+              <h3>Connection details</h3>
+              <div class="connection-row"><span>Mode</span><b>PINPAD</b></div>
+              <div class="connection-row"><span>LAN</span><b>Listening · 8443</b></div>
+              <div class="connection-row"><span>Cloud</span><b>Connected</b></div>
+              <div class="connection-row"><span>App-to-App</span><b>Listening</b></div>
+              <div class="connection-row"><span>Cable</span><b>Waiting</b></div>
+            </div>
+
+            <div id="screenControls" class="screen-controls">
+              <button id="screenBackBtn" class="screen-action screen-back" aria-label="Back">←</button>
+              <button id="screenMenuBtn" class="screen-action screen-menu" aria-label="Connection details">☰</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="sim-panel">
+        <h2>Terminal form</h2>
+        <div class="segmented">
+          <button id="p3khModeBtn" class="active">P3KH</button>
+          <button id="p3hModeBtn">P3H</button>
+          <button id="landscapeModeBtn">Landscape</button>
+        </div>
+
+        <div class="sim-status">
+          <strong id="cacheStatus">Sign-in cache ready</strong>
+          <span id="displayStatus">Checking local resources…</span>
+        </div>
+        <div class="sim-kv">
+          <span>Owner AppId</span><b id="simAppId">—</b>
+          <span>Media profile</span><b id="simProfile">P3KH · 720×1280</b>
+          <span>Resources</span><b id="simResourceCount">0</b>
+          <span>Current item</span><b id="simCurrentItem">Default standby</b>
+        </div>
+
+        <p class="sim-help"><strong>Interaction:</strong><br>Multiple customer images play in the configured order using the profile image display time. Open full preview to show the complete simulated device in a centered page overlay; its bezel, camera and current carousel image stay synchronized. Double-click the terminal screen to reveal Back and Menu; the controls hide automatically after 5 seconds. Opening details pauses the timer and closing details restarts it.</p>
+        <button id="simulateEmptyBtn" class="btn">Simulate empty sign-in response</button>
+        <button id="restoreCacheBtn" class="btn">Restore saved response</button>
+      </aside>
+    </div>
+  </aside>
+
+  <div id="mediaModal" class="media-modal hidden" role="dialog" aria-modal="true" aria-label="Full device preview" aria-hidden="true">
+    <div class="media-modal-content">
+      <button id="closeMediaModalBtn" type="button" class="media-modal-close" aria-label="Close full device preview">Close</button>
+      <div id="modalDeviceShell" class="device-shell p3kh">
+        <span class="device-camera"></span>
+        <div id="modalDeviceScreen" class="device-screen custom-active" title="Double-click customer media to reveal controls">
+          <div id="modalCustomMedia" class="custom-media"></div>
+          <div id="modalDrawer" class="drawer">
+            <h3>Connection details</h3>
+            <div class="connection-row"><span>Mode</span><b>PINPAD</b></div>
+            <div class="connection-row"><span>LAN</span><b>Listening · 8443</b></div>
+            <div class="connection-row"><span>Cloud</span><b>Connected</b></div>
+            <div class="connection-row"><span>App-to-App</span><b>Listening</b></div>
+            <div class="connection-row"><span>Cable</span><b>Waiting</b></div>
+          </div>
+          <div id="modalScreenControls" class="screen-controls">
+            <button id="modalScreenBackBtn" class="screen-action screen-back" aria-label="Close full device preview">←</button>
+            <button id="modalScreenMenuBtn" class="screen-action screen-menu" aria-label="Connection details">☰</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="prototype-banner"><span>TapLink standby concept · no production services</span><span id="selfCheck" class="self-check">Self-check pending</span></div>
+
+  <script>
+"use strict";
+
+const PROFILE_RULES = {
+  p3kh: { label: "P3KH", imageWidth: 720, imageHeight: 1280 },
+  p3h: { label: "P3H", imageWidth: 720, imageHeight: 1600 },
+  landscape: { label: "Landscape", imageWidth: 1920, imageHeight: 1200 }
+};
+const PROFILES = Object.keys(PROFILE_RULES);
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_RESOURCES_PER_PROFILE = 10;
+const DEFAULT_IMAGE_DISPLAY_SECONDS = 5;
+
+const state = {
+  view: "details",
+  appId: "smfu7g3g9wbwj9eb",
+  selectedModels: new Set(["P3KH", "P3H", "P3Mix"]),
+  resources: { p3kh: [], p3h: [], landscape: [] },
+  imageDisplaySeconds: { p3kh: DEFAULT_IMAGE_DISPLAY_SECONDS, p3h: DEFAULT_IMAGE_DISPLAY_SECONDS, landscape: DEFAULT_IMAGE_DISPLAY_SECONDS },
+  playbackTimer: null,
+  playbackIndex: 0,
+  published: null,
+  activeCache: null,
+  simulatorProfile: "p3kh",
+  controlsTimer: null,
+  modalControlsTimer: null,
+  drawerOpen: false,
+  modalDrawerOpen: false,
+  simulatedEmpty: false
+};
+
+const $ = (id) => document.getElementById(id);
+const connectApp = $("connectApp");
+const detailsScreen = $("detailsScreen");
+const editScreen = $("editScreen");
+const taproPage = $("taproPage");
+const deviceShell = $("deviceShell");
+const deviceScreen = $("deviceScreen");
+const defaultStandby = $("defaultStandby");
+const customMedia = $("customMedia");
+const screenControls = $("screenControls");
+const openDevicePreviewBtn = $("openDevicePreviewBtn");
+const mediaModal = $("mediaModal");
+const modalDeviceShell = $("modalDeviceShell");
+const modalDeviceScreen = $("modalDeviceScreen");
+const modalCustomMedia = $("modalCustomMedia");
+const modalScreenControls = $("modalScreenControls");
+const modalDrawer = $("modalDrawer");
+const drawer = $("drawer");
+
+function showToast(message) {
+  const toast = $("toast");
+  toast.textContent = message;
+  toast.classList.add("show");
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 2400);
+}
+
+function selectedProfiles(models = state.selectedModels) {
+  const profiles = new Set();
+  document.querySelectorAll(".device-chip").forEach((chip) => {
+    if (models.has(chip.dataset.model)) profiles.add(chip.dataset.profile);
+  });
+  return profiles;
+}
+
+function typeFromFile(file) {
+  return IMAGE_TYPES.has(file.type) ? "IMAGE" : null;
+}
+
+function inspectImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const result = { width: image.naturalWidth, height: image.naturalHeight, duration: null };
+      URL.revokeObjectURL(url);
+      resolve(result);
+    };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image cannot be decoded.")); };
+    image.src = url;
+  });
+}
+
+async function validateAndCreateResource(profile, file) {
+  const rule = PROFILE_RULES[profile];
+  if (!typeFromFile(file)) throw new Error(`${file.name}: only PNG, JPEG or WebP images are accepted.`);
+  if (file.size > MAX_IMAGE_BYTES) throw new Error(`${file.name}: image must be 2 MB or smaller.`);
+  const metadata = await inspectImage(file);
+  if (metadata.width !== rule.imageWidth || metadata.height !== rule.imageHeight) {
+    throw new Error(`${file.name}: expected ${rule.imageWidth}×${rule.imageHeight} px, received ${metadata.width}×${metadata.height} px.`);
+  }
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: file.name,
+    type: "IMAGE",
+    mime: file.type,
+    size: file.size,
+    width: metadata.width,
+    height: metadata.height,
+    objectUrl: URL.createObjectURL(file)
+  };
+}
+
+async function addFiles(profile, fileList) {
+  const files = Array.from(fileList);
+  if (!files.length) return;
+
+  const availableSlots = MAX_RESOURCES_PER_PROFILE - state.resources[profile].length;
+  const candidates = files.slice(0, Math.max(availableSlots, 0));
+  const errors = [];
+  const accepted = [];
+  if (files.length > availableSlots) errors.push(`Only ${Math.max(availableSlots, 0)} of ${files.length} images can be added; each profile allows up to ${MAX_RESOURCES_PER_PROFILE}.`);
+
+  for (const file of candidates) {
+    try {
+      accepted.push(await validateAndCreateResource(profile, file));
+    } catch (error) {
+      errors.push(error.message);
+    }
+  }
+
+  if (accepted.length) {
+    state.resources[profile].push(...accepted);
+    renderResourceList(profile);
+    renderJson();
+    syncImmediatePreview(profile);
+    openSimulator();
+    showToast(`${accepted.length} image${accepted.length === 1 ? "" : "s"} added. Live carousel updated.`);
+  }
+  $(`${profile}Validation`).textContent = errors.join(" ");
+}
+
+function mockCdnUrl(profile, item, appId = state.appId) {
+  const safeName = encodeURIComponent(item.name.replace(/\s+/g, "-"));
+  return `https://cdn.sunbay.example/${encodeURIComponent(appId)}/${profile}/${safeName}`;
+}
+
+function buildResponse(resources = state.resources, appId = state.appId, imageDisplaySeconds = state.imageDisplaySeconds) {
+  const profiles = selectedProfiles();
+  const playlistFor = (profile) => {
+    if (!profiles.has(profile) || !resources[profile].length) return null;
+    return {
+      imageDisplaySeconds: imageDisplaySeconds[profile],
+      resources: resources[profile].map((item) => ({
+        mediaType: item.type,
+        url: mockCdnUrl(profile, item, appId)
+      }))
+    };
+  };
+  const p3kh = playlistFor("p3kh");
+  const p3h = playlistFor("p3h");
+  const landscape = playlistFor("landscape");
+  return {
+    semiIntegratedAppName: $("appName").value.trim() || "TapLink POS",
+    pinpadStandbyResources: p3kh || p3h || landscape ? { p3kh, p3h, landscape } : null
+  };
+}
+
+function resourcesForProfile(cache, profile) {
+  if (!cache || !cache.resources || !Array.isArray(cache.resources[profile])) return [];
+  return cache.resources[profile];
+}
+
+function renderJson() { $("jsonPreview").textContent = JSON.stringify(buildResponse(), null, 2); }
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function deleteResource(profile, resourceId) {
+  const index = state.resources[profile].findIndex((item) => item.id === resourceId);
+  if (index < 0) return;
+  const [removed] = state.resources[profile].splice(index, 1);
+  URL.revokeObjectURL(removed.objectUrl);
+  renderResourceList(profile);
+  renderJson();
+  syncImmediatePreview(profile);
+  renderSimulator();
+}
+
+function moveResource(profile, index, direction) {
+  const targetIndex = index + direction;
+  const list = state.resources[profile];
+  if (targetIndex < 0 || targetIndex >= list.length) return;
+  [list[index], list[targetIndex]] = [list[targetIndex], list[index]];
+  renderResourceList(profile);
+  renderJson();
+  syncImmediatePreview(profile);
+  renderSimulator();
+}
+
+function updateImageDisplaySeconds(profile, value) {
+  const seconds = Number(value);
+  if (!Number.isInteger(seconds) || seconds < 3 || seconds > 60) {
+    $(`${profile}Validation`).textContent = "Image display time must be an integer from 3 to 60 seconds.";
+    $(`${profile}Interval`).value = String(state.imageDisplaySeconds[profile]);
+    return;
+  }
+  state.imageDisplaySeconds[profile] = seconds;
+  $(`${profile}Validation`).textContent = "";
+  renderJson();
+  syncImmediatePreview(profile);
+  renderSimulator();
+}
+
+function renderCarouselSettings(profile) {
+  const enabled = state.resources[profile].length > 1;
+  $(`${profile}CarouselSettings`).classList.toggle("hidden", !enabled);
+  $(`${profile}Interval`).value = String(state.imageDisplaySeconds[profile]);
+}
+
+function renderResourceList(profile) {
+  const host = $(`${profile}List`);
+  const list = state.resources[profile];
+  host.replaceChildren();
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "resource-empty";
+    empty.textContent = "No images uploaded";
+    host.append(empty);
+    renderCarouselSettings(profile);
+    return;
+  }
+
+  list.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "resource-item";
+    const image = document.createElement("img");
+    image.className = "thumb";
+    image.src = item.objectUrl;
+    image.alt = `${PROFILE_RULES[profile].label} standby image ${index + 1}`;
+    row.append(image);
+
+    const copy = document.createElement("div");
+    copy.className = "resource-copy";
+    const name = document.createElement("strong");
+    name.textContent = `${index + 1}. ${item.name}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${item.width}×${item.height} · ${formatSize(item.size)} · carousel order ${index + 1}`;
+    copy.append(name, meta);
+    row.append(copy);
+
+    const actions = document.createElement("div");
+    actions.className = "resource-actions";
+    const up = document.createElement("button");
+    up.type = "button";
+    up.className = "icon-btn";
+    up.textContent = "↑";
+    up.title = "Move image up";
+    up.setAttribute("aria-label", "Move image up");
+    up.disabled = index === 0;
+    up.addEventListener("click", () => moveResource(profile, index, -1));
+    const down = document.createElement("button");
+    down.type = "button";
+    down.className = "icon-btn";
+    down.textContent = "↓";
+    down.title = "Move image down";
+    down.setAttribute("aria-label", "Move image down");
+    down.disabled = index === list.length - 1;
+    down.addEventListener("click", () => moveResource(profile, index, 1));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "icon-btn";
+    remove.textContent = "×";
+    remove.title = "Remove image";
+    remove.setAttribute("aria-label", "Remove image");
+    remove.addEventListener("click", () => deleteResource(profile, item.id));
+    actions.append(up, down, remove);
+    row.append(actions);
+    host.append(row);
+  });
+  renderCarouselSettings(profile);
+}
+
+function renderDeviceSelection() {
+  document.querySelectorAll(".device-chip").forEach((chip) => chip.classList.toggle("selected", state.selectedModels.has(chip.dataset.model)));
+  const profiles = selectedProfiles();
+  PROFILES.forEach((profile) => $(`${profile}Uploader`).classList.toggle("hidden", !profiles.has(profile)));
+  clearValidation();
+}
+
+function clearValidation() {
+  $("deviceValidation").textContent = "";
+  PROFILES.forEach((profile) => $(`${profile}Validation`).textContent = "");
+}
+
+function validateEdit() {
+  clearValidation();
+  const profiles = selectedProfiles();
+  if (!profiles.size) {
+    $("deviceValidation").textContent = "Select at least one target device model.";
+    return false;
+  }
+  const hasAny = Array.from(profiles).some((profile) => state.resources[profile].length > 0);
+  if (!hasAny) return true;
+  let valid = true;
+  PROFILES.forEach((profile) => {
+    if (profiles.has(profile) && state.resources[profile].length === 0) {
+      $(`${profile}Validation`).textContent = `Upload at least one ${PROFILE_RULES[profile].label} resource, or clear every selected profile to remove customization.`;
+      valid = false;
+    }
+  });
+  return valid;
+}
+
+function showConnectScreen(name) {
+  state.view = name;
+  connectApp.classList.remove("hidden");
+  const editing = name === "edit";
+  detailsScreen.classList.toggle("hidden", editing);
+  editScreen.classList.toggle("hidden", !editing);
+  $("subbarTitle").textContent = editing ? "Edit Application" : "Application Details";
+  if (editing) openSimulator();
+  else closePreviewSidebar();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function syncImmediatePreview(profile) {
+  const cachedResources = Object.fromEntries(PROFILES.map((value) => [value, [...state.resources[value]]]));
+  const cachedImageDisplaySeconds = { ...state.imageDisplaySeconds };
+  state.published = {
+    appId: state.appId,
+    response: buildResponse(),
+    resources: cachedResources,
+    imageDisplaySeconds: cachedImageDisplaySeconds
+  };
+  state.activeCache = {
+    ownerAppId: state.appId,
+    resources: cachedResources,
+    imageDisplaySeconds: cachedImageDisplaySeconds
+  };
+  state.simulatedEmpty = false;
+  state.simulatorProfile = profile;
+  PROFILES.forEach((value) => $( `${value}ModeBtn` ).classList.toggle("active", value === profile));
+  PROFILES.forEach((value) => deviceShell.classList.toggle(value, value === profile));
+}
+
+function publishAndOpen() {
+  if (!validateEdit()) { showToast("Complete every selected media profile before saving."); return; }
+  const cachedResources = Object.fromEntries(PROFILES.map((profile) => [profile, [...state.resources[profile]]]));
+  const cachedImageDisplaySeconds = { ...state.imageDisplaySeconds };
+  state.published = {
+    appId: state.appId,
+    response: buildResponse(),
+    resources: cachedResources,
+    imageDisplaySeconds: cachedImageDisplaySeconds
+  };
+  state.activeCache = {
+    ownerAppId: state.appId,
+    resources: cachedResources,
+    imageDisplaySeconds: cachedImageDisplaySeconds
+  };
+  state.simulatedEmpty = false;
+  $("detailsAppName").textContent = $("appName").value.trim() || "TapLink POS";
+  $("detailsDescription").textContent = $("appDescription").value.trim() || "—";
+  showToast("Application saved. Three-profile sign-in cache updated.");
+  openSimulator();
+}
+
+function clearAllResources() {
+  PROFILES.forEach((profile) => {
+    state.resources[profile].forEach((item) => URL.revokeObjectURL(item.objectUrl));
+    state.resources[profile] = [];
+    renderResourceList(profile);
+  });
+  renderJson();
+  syncImmediatePreview(state.simulatorProfile);
+  renderSimulator();
+  showToast("All profile resources cleared. Live preview restored to the default page.");
+}
+
+function openSimulator() {
+  connectApp.classList.remove("hidden");
+  taproPage.classList.remove("hidden");
+  taproPage.classList.add("open");
+  taproPage.setAttribute("aria-hidden", "false");
+  document.body.classList.add("preview-open");
+  closeDrawer();
+  hideControls();
+  resetPlayback();
+  renderSimulator();
+}
+
+function closePreviewSidebar() {
+  closeMediaModal();
+  closeDrawer();
+  hideControls();
+  taproPage.classList.remove("open");
+  taproPage.classList.add("hidden");
+  taproPage.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("preview-open");
+}
+
+function setSimulatorProfile(profile) {
+  state.simulatorProfile = profile;
+  PROFILES.forEach((value) => $(`${value}ModeBtn`).classList.toggle("active", value === profile));
+  PROFILES.forEach((value) => deviceShell.classList.toggle(value, value === profile));
+  closeDrawer();
+  hideControls();
+  resetPlayback();
+  renderSimulator();
+}
+
+function resetPlayback() {
+  window.clearTimeout(state.playbackTimer);
+  state.playbackTimer = null;
+  state.playbackIndex = 0;
+  customMedia.replaceChildren();
+}
+
+function renderSimulator() {
+  resetPlayback();
+  clearControlsAutoHide();
+  const profile = state.simulatorProfile;
+  const rule = PROFILE_RULES[profile];
+  const list = state.simulatedEmpty ? [] : resourcesForProfile(state.activeCache, profile);
+  const hasCustomImage = list.length > 0;
+  deviceScreen.classList.toggle("custom-active", hasCustomImage);
+  $("simAppId").textContent = state.activeCache?.ownerAppId || "—";
+  $("simProfile").textContent = `${rule.label} · ${rule.imageWidth}×${rule.imageHeight}`;
+  $("simResourceCount").textContent = String(list.length);
+  $("cacheStatus").textContent = state.simulatedEmpty ? "Authoritative empty response" : (state.activeCache ? "Sign-in cache ready" : "No active cache");
+  $("displayStatus").textContent = list.length ? "Customer media for this exact profile replaces the default standby body." : "No matching local profile; TaPro default page is active.";
+  defaultStandby.classList.toggle("hidden", list.length > 0);
+  customMedia.classList.toggle("hidden", list.length === 0);
+  if (!hasCustomImage) {
+    screenControls.classList.add("visible");
+    $("simCurrentItem").textContent = "Default standby";
+    customMedia.replaceChildren();
+    closeMediaModal();
+    updateDevicePreviewButton();
+    return;
+  }
+  closeDrawer();
+  screenControls.classList.remove("visible");
+  renderCurrentMedia(list);
+  updateDevicePreviewButton();
+}
+
+function renderCurrentMedia(list) {
+  window.clearTimeout(state.playbackTimer);
+  state.playbackTimer = null;
+  customMedia.replaceChildren();
+  const index = state.playbackIndex % list.length;
+  const item = list[index];
+  const imageDisplaySeconds = state.activeCache?.imageDisplaySeconds?.[state.simulatorProfile] ?? DEFAULT_IMAGE_DISPLAY_SECONDS;
+  $("simCurrentItem").textContent = `${index + 1}/${list.length} · ${item.name} · ${item.width}×${item.height}`;
+  $("displayStatus").textContent = list.length > 1
+    ? `Customer image carousel is active. Switching every ${imageDisplaySeconds} seconds in configured order.`
+    : "Customer media for this exact profile replaces the default standby body.";
+  const image = document.createElement("img");
+  image.src = item.objectUrl;
+  image.alt = item.name;
+  image.addEventListener("error", () => {
+    closeDrawer();
+    resetPlayback();
+    deviceScreen.classList.remove("custom-active");
+    customMedia.classList.add("hidden");
+    defaultStandby.classList.remove("hidden");
+    screenControls.classList.add("visible");
+    closeMediaModal();
+    updateDevicePreviewButton();
+    $("displayStatus").textContent = "The custom image failed to load; default standby fallback is active.";
+  });
+  customMedia.append(image);
+  renderMediaModal();
+  if (list.length > 1) {
+    state.playbackTimer = window.setTimeout(() => {
+      if (!hasActiveCustomMedia()) return;
+      state.playbackIndex = (index + 1) % list.length;
+      renderCurrentMedia(list);
+    }, imageDisplaySeconds * 1000);
+  }
+}
+
+function hasActiveCustomMedia() {
+  return deviceScreen.classList.contains("custom-active")
+    && !customMedia.classList.contains("hidden")
+    && customMedia.childElementCount > 0;
+}
+
+function updateDevicePreviewButton() {
+  openDevicePreviewBtn.disabled = !hasActiveCustomMedia();
+}
+
+function renderMediaModal() {
+  if (mediaModal.classList.contains("hidden")) return;
+  hideModalControls();
+  closeModalDrawer();
+  const list = state.simulatedEmpty ? [] : resourcesForProfile(state.activeCache, state.simulatorProfile);
+  if (!list.length) {
+    closeMediaModal();
+    return;
+  }
+  const item = list[state.playbackIndex % list.length];
+  modalDeviceShell.className = `device-shell ${state.simulatorProfile}`;
+  modalCustomMedia.replaceChildren();
+  const image = document.createElement("img");
+  image.src = item.objectUrl;
+  image.alt = `${item.name} full device preview`;
+  image.addEventListener("error", closeMediaModal);
+  modalCustomMedia.append(image);
+}
+
+function openDevicePreviewModal() {
+  if (!hasActiveCustomMedia()) {
+    showToast("Upload a customer image before opening the full preview.");
+    return;
+  }
+  mediaModal.classList.remove("hidden");
+  mediaModal.setAttribute("aria-hidden", "false");
+  renderMediaModal();
+}
+
+function closeMediaModal() {
+  closeModalDrawer();
+  hideModalControls();
+  mediaModal.classList.add("hidden");
+  mediaModal.setAttribute("aria-hidden", "true");
+  modalCustomMedia.replaceChildren();
+}
+
+function hasActiveModalMedia() {
+  return !mediaModal.classList.contains("hidden") && modalCustomMedia.childElementCount > 0;
+}
+
+function clearModalControlsAutoHide() {
+  window.clearTimeout(state.modalControlsTimer);
+  state.modalControlsTimer = null;
+}
+
+function showModalControls() {
+  if (!hasActiveModalMedia()) return;
+  modalScreenControls.classList.add("visible");
+  clearModalControlsAutoHide();
+  if (!state.modalDrawerOpen) state.modalControlsTimer = window.setTimeout(hideModalControls, 5000);
+}
+
+function hideModalControls() {
+  clearModalControlsAutoHide();
+  if (!state.modalDrawerOpen) modalScreenControls.classList.remove("visible");
+}
+
+function toggleModalDrawer() {
+  state.modalDrawerOpen = !state.modalDrawerOpen;
+  modalDrawer.classList.toggle("open", state.modalDrawerOpen);
+  if (state.modalDrawerOpen) {
+    clearModalControlsAutoHide();
+    modalScreenControls.classList.add("visible");
+  } else {
+    showModalControls();
+  }
+}
+
+function closeModalDrawer() {
+  state.modalDrawerOpen = false;
+  modalDrawer.classList.remove("open");
+}
+
+function clearControlsAutoHide() {
+  window.clearTimeout(state.controlsTimer);
+  state.controlsTimer = null;
+}
+
+function startControlsAutoHide() {
+  state.controlsTimer = window.setTimeout(hideControls, 5000);
+}
+
+function showControls() {
+  if (!hasActiveCustomMedia()) return;
+  screenControls.classList.add("visible");
+  clearControlsAutoHide();
+  if (!state.drawerOpen) startControlsAutoHide();
+}
+function hideControls() {
+  clearControlsAutoHide();
+  if (!hasActiveCustomMedia()) { screenControls.classList.add("visible"); return; }
+  if (!state.drawerOpen) screenControls.classList.remove("visible");
+}
+function toggleDrawer() {
+  state.drawerOpen = !state.drawerOpen;
+  drawer.classList.toggle("open", state.drawerOpen);
+  if (state.drawerOpen) {
+    clearControlsAutoHide();
+    screenControls.classList.add("visible");
+  } else {
+    showControls();
+  }
+}
+function closeDrawer() { state.drawerOpen = false; drawer.classList.remove("open"); }
+
+function simulateEmptyResponse() {
+  state.simulatedEmpty = true;
+  closeDrawer(); hideControls(); resetPlayback(); renderSimulator();
+  showToast("Empty response clears all media profiles and restores the default page.");
+}
+function restorePublishedCache() {
+  if (!state.published) { showToast("Save resources in Connect first."); return; }
+  state.activeCache = {
+    ownerAppId: state.published.appId,
+    resources: Object.fromEntries(PROFILES.map((profile) => [profile, [...state.published.resources[profile]]])),
+    imageDisplaySeconds: { ...state.published.imageDisplaySeconds }
+  };
+  state.simulatedEmpty = false;
+  resetPlayback(); renderSimulator();
+  showToast("Last saved three-profile response restored.");
+}
+
+function setupDropZone(zone) {
+  const profile = zone.dataset.profile;
+  ["dragenter", "dragover"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.add("dragging"); }));
+  ["dragleave", "drop"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.remove("dragging"); }));
+  zone.addEventListener("drop", (event) => addFiles(profile, event.dataTransfer.files));
+}
+
+function runSelfChecks() {
+  const checks = [
+    resourcesForProfile(null, "p3kh").length === 0,
+    PROFILE_RULES.p3kh.imageHeight === 1280,
+    PROFILE_RULES.p3h.imageHeight === 1600,
+    PROFILE_RULES.landscape.imageWidth === 1920
+  ];
+  const passed = checks.filter(Boolean).length;
+  $("selfCheck").textContent = `Self-check ${passed}/${checks.length} passed`;
+  if (passed !== checks.length) console.error("Prototype self-check failed", checks);
+}
+
+$("editProfileBtn").addEventListener("click", () => showConnectScreen("edit"));
+$("cancelEditBtn").addEventListener("click", () => showConnectScreen("details"));
+$("subbarBack").addEventListener("click", () => state.view === "edit" ? showConnectScreen("details") : showToast("Application list is outside this prototype."));
+PROFILES.forEach((profile) => {
+  $(`${profile}Input`).addEventListener("change", async (event) => { await addFiles(profile, event.target.files); event.target.value = ""; });
+  $(`${profile}Interval`).addEventListener("change", (event) => updateImageDisplaySeconds(profile, event.target.value));
+});
+document.querySelectorAll(".drop-zone").forEach(setupDropZone);
+document.querySelectorAll(".device-chip").forEach((chip) => chip.addEventListener("click", () => {
+  const model = chip.dataset.model;
+  state.selectedModels.has(model) ? state.selectedModels.delete(model) : state.selectedModels.add(model);
+  renderDeviceSelection(); renderJson();
+}));
+$("copyJsonBtn").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("jsonPreview").textContent); showToast("JSON copied."); }
+  catch (_) { showToast("Clipboard unavailable for local files; select JSON manually."); }
+});
+$("saveOpenBtn").addEventListener("click", publishAndOpen);
+$("clearResourcesBtn").addEventListener("click", clearAllResources);
+$("openPreviewBtn").addEventListener("click", openSimulator);
+$("openDevicePreviewBtn").addEventListener("click", openDevicePreviewModal);
+$("closeMediaModalBtn").addEventListener("click", closeMediaModal);
+$("backToConnectBtn").addEventListener("click", closePreviewSidebar);
+PROFILES.forEach((profile) => $(`${profile}ModeBtn`).addEventListener("click", () => setSimulatorProfile(profile)));
+$("simulateEmptyBtn").addEventListener("click", simulateEmptyResponse);
+$("restoreCacheBtn").addEventListener("click", restorePublishedCache);
+deviceScreen.addEventListener("dblclick", showControls);
+modalDeviceScreen.addEventListener("dblclick", showModalControls);
+$("screenMenuBtn").addEventListener("click", (event) => { event.stopPropagation(); toggleDrawer(); });
+$("screenBackBtn").addEventListener("click", (event) => { event.stopPropagation(); closePreviewSidebar(); });
+$("modalScreenBackBtn").addEventListener("click", (event) => { event.stopPropagation(); closeMediaModal(); });
+$("modalScreenMenuBtn").addEventListener("click", (event) => { event.stopPropagation(); toggleModalDrawer(); });
+deviceScreen.addEventListener("click", (event) => {
+  if (state.drawerOpen && !drawer.contains(event.target) && !$("screenMenuBtn").contains(event.target)) { closeDrawer(); showControls(); }
+});
+modalDeviceScreen.addEventListener("click", (event) => {
+  if (state.modalDrawerOpen && !modalDrawer.contains(event.target) && !$("modalScreenMenuBtn").contains(event.target)) {
+    closeModalDrawer();
+    showModalControls();
+  }
+});
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (!mediaModal.classList.contains("hidden")) {
+    closeMediaModal();
+    return;
+  }
+  if (taproPage.classList.contains("open")) closePreviewSidebar();
+});
+window.addEventListener("beforeunload", () => PROFILES.forEach((profile) => state.resources[profile].forEach((item) => URL.revokeObjectURL(item.objectUrl))));
+
+PROFILES.forEach(renderResourceList);
+renderDeviceSelection();
+renderJson();
+runSelfChecks();
+
+  </script>
+</body>
+</html>
