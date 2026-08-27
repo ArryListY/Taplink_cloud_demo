@@ -437,6 +437,9 @@ function renderDetail() {
   actions += `<button class="ghost-btn" id="detailQueryBtn">Query Status</button>`;
   actions += `<button class="ghost-btn" id="detailBackBtn">Back to Menu</button>`;
   actions += `<button class="ghost-btn" id="detailHistoryBtn">All Transactions</button>`;
+  if (txn.status === TxnStatus.SUCCESS && txn.channel !== 'online' && (txn.type === TxnType.SALE || txn.type === TxnType.FORCED_AUTH || txn.type === TxnType.AUTH)) {
+    actions = `<label class="detail-reference-select">Original transaction<select id="originalTransactionReference"><option value="transactionId"${txn.transactionId ? '' : ' disabled'}>Transaction ID</option><option value="transactionRequestId">Transaction Request ID</option></select></label>` + actions;
+  }
   el.detailActions.innerHTML = actions;
 
   // Bind events
@@ -561,11 +564,11 @@ async function executeForcedAuth() {
 
 // --- Refund (referenced, from Detail) ---
 async function executeRefund(origTxn) {
-  if (!origTxn?.transactionId && !origTxn?.requestId) { logEvent('Refund requires original transaction'); return; }
+  const originalReference = getOriginalTransactionReference(origTxn);
+  if (!originalReference) { logEvent('Refund requires original transaction identifier'); return; }
   const txn = createTxnRecord(TxnType.REFUND); startTxnProgress(txn);
   const payload = { ...basePayload(), transactionRequestId: txn.requestId, amount: { orderAmount: origTxn.totalCents || txn.amount.orderAmount, priceCurrency: getConfig().currency }, description: 'Refund', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL, pushToTerminal: true };
-  if (origTxn.transactionId) payload.originalTransactionId = origTxn.transactionId;
-  else if (origTxn.requestId) payload.originalTransactionRequestId = origTxn.requestId;
+  Object.assign(payload, originalReference);
   try { const r = await callProxy('POST', API_PATHS.REFUND, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
@@ -676,7 +679,7 @@ async function executeAbort() {
   const path = isOnline ? API_PATHS.CHECKOUT_EXPIRE : API_PATHS.ABORT;
   const payload = isOnline
     ? { appId: cfg.appId, merchantId: cfg.merchantId, sessionId: activeTxn.sessionId || undefined, transactionRequestId: activeTxn.requestId, referenceOrderId: activeTxn.orderId }
-    : { ...basePayload(), originalTransactionId: activeTxn.transactionId || undefined, originalTransactionRequestId: activeTxn.requestId || undefined, description: 'User cancelled' };
+    : { ...basePayload(), ...getOriginalTransactionReference(activeTxn), description: 'User cancelled' };
   try {
     const r = await callProxy('POST', path, payload);
     const code = extractCodeFromResponse(r.data);
@@ -684,6 +687,20 @@ async function executeAbort() {
     if (!code || code === '0') { activeTxn.status = TxnStatus.FAILED; activeTxn.errorMessage = isOnline ? 'Session closed' : 'Aborted'; activeTxn.updatedAt = Date.now(); saveTransactions(); renderProgress(); updateDevConsole(); }
     else { logEvent(`Failed: [${code}] ${extractMsgFromResponse(r.data)}`); if (el.abortBtn) { el.abortBtn.disabled = false; el.abortBtn.textContent = isOnline ? 'Close Session' : 'Abort Transaction'; } }
   } catch (e) { logEvent(`Failed: ${e.message}`); if (el.abortBtn) { el.abortBtn.disabled = false; } }
+}
+
+function getOriginalTransactionReference(origTxn) {
+  const referenceType = document.getElementById('originalTransactionReference')?.value || 'transactionId';
+  if (referenceType === 'transactionRequestId' && origTxn?.requestId) {
+    return { originalTransactionRequestId: origTxn.requestId };
+  }
+  if (origTxn?.transactionId) {
+    return { originalTransactionId: origTxn.transactionId };
+  }
+  if (origTxn?.requestId) {
+    return { originalTransactionRequestId: origTxn.requestId };
+  }
+  return null;
 }
 
 // --- Expire Session (Detail view) ---
@@ -702,19 +719,21 @@ async function executeExpireSession(txn) {
 
 // --- Void from Detail ---
 async function executeVoidFromDetail(origTxn) {
-  if (!origTxn?.transactionId) { logEvent('Void requires transactionId'); return; }
+  const originalReference = getOriginalTransactionReference(origTxn);
+  if (!originalReference) { logEvent('Void requires original transaction identifier'); return; }
   const txn = createTxnRecord(TxnType.VOID); startTxnProgress(txn);
-  const payload = { ...basePayload(), transactionRequestId: txn.requestId, originalTransactionId: origTxn.transactionId, description: 'Void', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, pushToTerminal: true, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+  const payload = { ...basePayload(), transactionRequestId: txn.requestId, ...originalReference, description: 'Void', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, pushToTerminal: true, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
   try { const r = await callProxy('POST', API_PATHS.VOID, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
 // --- Tip Adjust from Detail ---
 async function executeTipAdjustFromDetail(origTxn) {
-  if (!origTxn?.transactionId) { logEvent('Tip Adjust requires transactionId'); return; }
+  const originalReference = getOriginalTransactionReference(origTxn);
+  if (!originalReference) { logEvent('Tip Adjust requires original transaction identifier'); return; }
   const tipAmount = parseInt(prompt('Enter tip amount (cents):', '100')) || 0;
   if (tipAmount <= 0) return;
   const txn = createTxnRecord(TxnType.TIP_ADJUST); txn.totalCents = tipAmount; startTxnProgress(txn);
-  const payload = { ...basePayload(), originalTransactionId: origTxn.transactionId, tipAmount, pushToTerminal: true };
+  const payload = { ...basePayload(), ...originalReference, tipAmount, pushToTerminal: true };
   try {
     const r = await callProxy('POST', API_PATHS.TIP_ADJUST, payload);
     const code = extractCodeFromResponse(r.data);
@@ -733,22 +752,24 @@ async function executeTipAdjustFromDetail(origTxn) {
 
 // --- Post Auth (Capture) from Detail ---
 async function executePostAuthFromDetail(origTxn) {
-  if (!origTxn?.transactionId) { logEvent('Post Auth requires transactionId'); return; }
+  const originalReference = getOriginalTransactionReference(origTxn);
+  if (!originalReference) { logEvent('Post Auth requires original transaction identifier'); return; }
   const txn = createTxnRecord(TxnType.POST_AUTH); startTxnProgress(txn);
-  const payload = { ...basePayload(), transactionRequestId: txn.requestId, originalTransactionId: origTxn.transactionId, amount: txn.amount, description: 'Post Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, pushToTerminal: true, tipConfig: buildTipConfig(), notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+  const payload = { ...basePayload(), transactionRequestId: txn.requestId, ...originalReference, amount: txn.amount, description: 'Post Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, pushToTerminal: true, tipConfig: buildTipConfig(), notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
   try { const r = await callProxy('POST', API_PATHS.POST_AUTH, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
 // --- Incremental Auth from Detail ---
 async function executeIncrementalAuthFromDetail(origTxn) {
-  if (!origTxn?.transactionId) { logEvent('Incremental Auth requires transactionId'); return; }
+  const originalReference = getOriginalTransactionReference(origTxn);
+  if (!originalReference) { logEvent('Incremental Auth requires original transaction identifier'); return; }
   const addAmountStr = prompt('Enter additional auth amount (cents):', String(origTxn.totalCents || 500));
   const addAmount = parseInt(addAmountStr) || 0;
   if (addAmount <= 0) return;
   const txn = createTxnRecord(TxnType.INCREMENTAL_AUTH); txn.totalCents = addAmount;
   txn.amount = { orderAmount: addAmount, priceCurrency: getConfig().currency, totalAmount: addAmount };
   startTxnProgress(txn);
-  const payload = { ...basePayload(), transactionRequestId: txn.requestId, originalTransactionId: origTxn.transactionId, amount: txn.amount, description: 'Incremental Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, pushToTerminal: true, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+  const payload = { ...basePayload(), transactionRequestId: txn.requestId, ...originalReference, amount: txn.amount, description: 'Incremental Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, pushToTerminal: true, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
   try { const r = await callProxy('POST', API_PATHS.INCREMENTAL_AUTH, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
