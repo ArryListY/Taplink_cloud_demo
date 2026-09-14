@@ -598,7 +598,7 @@ async function executeRefundNext() {
   const index = refundState.currentSplit;
   const txn = createTxnRecord(TxnType.REFUND);
   txn.totalCents = refundState.splitAmounts[index];
-  txn.amount = { orderAmount: txn.totalCents, priceCurrency: getConfig().currency, totalAmount: txn.totalCents };
+  txn.amount = { orderAmount: Math.trunc(txn.totalCents), priceCurrency: getConfig().currency };
   txn.refundBatch = { index: index + 1, total: refundState.totalSplits };
   refundState.splitTxns.push(txn);
   startTxnProgress(txn);
