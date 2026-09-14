@@ -341,6 +341,12 @@ function renderProgress() {
 
   const status = activeTxn.status;
   const iconWrapper = document.getElementById('progressIconWrapper');
+  const forceRefundNextBtn = document.getElementById('forceRefundNextBtn');
+  const canForceRefundNext = refundState.enabled && activeTxn.type === TxnType.REFUND && status === TxnStatus.PROCESSING;
+  if (forceRefundNextBtn) {
+    forceRefundNextBtn.classList.toggle('hidden', !canForceRefundNext);
+    forceRefundNextBtn.disabled = !canForceRefundNext;
+  }
 
   if (status === TxnStatus.SUCCESS) {
     if (el.progressTitle) el.progressTitle.textContent = 'Transaction Successful';
@@ -937,6 +943,14 @@ function checkRefundNext() {
   }
 }
 
+function forceRefundNextForTest() {
+  if (!refundState.enabled || !activeTxn || activeTxn.type !== TxnType.REFUND || activeTxn.status !== TxnStatus.PROCESSING) return;
+  logEvent('Test action: simulating TRANSACTION_ENDED for current refund.');
+  activeTxn.terminalEnded = true;
+  checkRefundNext();
+  renderProgress();
+}
+
 // --- Merchant Query ---
 async function queryMerchant() {
   const cfg = getConfig();
@@ -1139,6 +1153,7 @@ function bindEvents() {
     }
   });
   el.abortBtn?.addEventListener('click', () => executeAbort());
+  document.getElementById('forceRefundNextBtn')?.addEventListener('click', forceRefundNextForTest);
   document.getElementById('closeProgressBtn')?.addEventListener('click', () => closeProgressModal());
   // Split toggle
   document.getElementById('splitEnabled')?.addEventListener('change', () => {

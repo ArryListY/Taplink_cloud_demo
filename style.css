@@ -141,6 +141,9 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .progress-terminal-status.visible { display: block; }
 
 .progress-actions { padding-top: 16px; text-align: center; }
+.test-action-btn { width: 100%; padding: 12px 14px; margin-top: 10px; background: transparent; color: var(--warning); border: 1px dashed var(--warning); border-radius: 10px; font-size: 13px; font-weight: 700; }
+.test-action-btn:hover:not(:disabled) { background: var(--warning-bg); }
+.test-action-btn:disabled { cursor: not-allowed; opacity: 0.45; }
 
 /* Checkout Link (online mode) */
 .checkout-link-container { margin-bottom: 24px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
