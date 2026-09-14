@@ -170,7 +170,14 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .detail-field-value { font-weight: 600; font-size: 13px; word-break: break-all; max-width: 60%; text-align: right; }
 .detail-actions { display: grid; gap: 10px; }
 .detail-reference-select { display: grid; gap: 6px; color: var(--text-muted); font-size: 13px; font-weight: 600; }
-.detail-reference-select select { background: var(--surface); color: var(--text-main); }
+.detail-reference-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.refund-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px; background: var(--error-bg); border: 1px solid rgba(224,59,59,0.18); border-radius: 10px; }
+.refund-settings label { display: grid; gap: 6px; color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.refund-settings input { width: 100%; box-sizing: border-box; padding: 10px; background: var(--surface); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+.refund-settings p { grid-column: 1 / -1; margin: 0; color: var(--text-muted); font-size: 12px; }
+.reference-btn { min-width: 0; padding: 11px 10px; background: var(--surface); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-weight: 600; }
+.reference-btn:hover:not(:disabled), .reference-btn.active { border-color: var(--primary); background: var(--primary-transparent); color: var(--primary); }
+.reference-btn:disabled { cursor: not-allowed; opacity: 0.45; }
 .detail-actions .primary-btn { width: 100%; padding: 14px; background: var(--primary); color: white; font-weight: 700; border-radius: 12px; font-size: 15px; transition: background 0.2s; }
 .detail-actions .primary-btn:hover { background: var(--primary-hover); }
 .detail-actions .refund-btn { background: var(--error); }

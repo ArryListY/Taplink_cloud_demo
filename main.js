@@ -74,6 +74,7 @@ let recentEventTimer = null;
 
 // Split payment state
 let splitState = { enabled: false, totalSplits: 2, currentSplit: 0, splitAmounts: [], splitTxns: [] };
+let refundState = { enabled: false, totalSplits: 0, currentSplit: 0, splitAmounts: [], splitTxns: [], originalReference: null };
 
 // === DOM Elements ===
 const el = {};
@@ -416,6 +417,7 @@ function renderDetail() {
       // Sale success → Void, Refund, Tip Adjust
       if (txn.type === TxnType.SALE || txn.type === TxnType.FORCED_AUTH) {
         actions += `<button class="primary-btn" id="detailVoidBtn">Void</button>`;
+        actions += `<div class="refund-settings"><label>Refund amount (cents)<input id="detailRefundAmount" type="number" min="1" max="${Math.max(1, txn.totalCents || 1)}" value="${Math.max(1, txn.totalCents || 1)}" /></label><label>Refund requests<input id="detailRefundCount" type="number" min="1" max="10" value="1" /></label><p>Requests are sent sequentially after each payment event ends.</p></div>`;
         actions += `<button class="primary-btn refund-btn" id="detailRefundBtn">Refund</button>`;
         actions += `<button class="ghost-btn" id="detailTipAdjustBtn">Tip Adjust</button>`;
       }
@@ -438,11 +440,17 @@ function renderDetail() {
   actions += `<button class="ghost-btn" id="detailBackBtn">Back to Menu</button>`;
   actions += `<button class="ghost-btn" id="detailHistoryBtn">All Transactions</button>`;
   if (txn.status === TxnStatus.SUCCESS && txn.channel !== 'online' && (txn.type === TxnType.SALE || txn.type === TxnType.FORCED_AUTH || txn.type === TxnType.AUTH)) {
-    actions = `<label class="detail-reference-select">Original transaction<select id="originalTransactionReference"><option value="transactionId"${txn.transactionId ? '' : ' disabled'}>Transaction ID</option><option value="transactionRequestId">Transaction Request ID</option></select></label>` + actions;
+    const defaultReference = txn.transactionId ? 'transactionId' : 'transactionRequestId';
+    actions = `<div class="detail-reference-select" data-reference="${defaultReference}"><span>Original transaction reference</span><div class="detail-reference-buttons"><button type="button" class="reference-btn${defaultReference === 'transactionId' ? ' active' : ''}" data-reference="transactionId"${txn.transactionId ? '' : ' disabled'}>Send Transaction ID</button><button type="button" class="reference-btn${defaultReference === 'transactionRequestId' ? ' active' : ''}" data-reference="transactionRequestId"${txn.requestId ? '' : ' disabled'}>Send Transaction Request ID</button></div></div>` + actions;
   }
   el.detailActions.innerHTML = actions;
 
   // Bind events
+  document.querySelectorAll('.reference-btn').forEach(button => button.addEventListener('click', () => {
+    document.querySelectorAll('.reference-btn').forEach(item => item.classList.remove('active'));
+    button.classList.add('active');
+    button.closest('.detail-reference-select')?.setAttribute('data-reference', button.dataset.reference || '');
+  }));
   document.getElementById('detailRefundBtn')?.addEventListener('click', () => executeRefund(txn));
   document.getElementById('detailExpireBtn')?.addEventListener('click', () => executeExpireSession(txn));
   document.getElementById('detailVoidBtn')?.addEventListener('click', () => executeVoidFromDetail(txn));
@@ -566,10 +574,36 @@ async function executeForcedAuth() {
 async function executeRefund(origTxn) {
   const originalReference = getOriginalTransactionReference(origTxn);
   if (!originalReference) { logEvent('Refund requires original transaction identifier'); return; }
-  const txn = createTxnRecord(TxnType.REFUND); startTxnProgress(txn);
-  const payload = { ...basePayload(), transactionRequestId: txn.requestId, amount: { orderAmount: origTxn.totalCents || txn.amount.orderAmount, priceCurrency: getConfig().currency }, description: 'Refund', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL, pushToTerminal: true };
-  Object.assign(payload, originalReference);
-  try { const r = await callProxy('POST', API_PATHS.REFUND, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
+  const originalAmount = Number(origTxn.totalCents || getDisplayAmount(origTxn) || 0);
+  const amount = parseInt(document.getElementById('detailRefundAmount')?.value, 10) || 0;
+  const count = parseInt(document.getElementById('detailRefundCount')?.value, 10) || 1;
+  if (amount < 1 || count < 1 || count > 10 || amount * count > originalAmount) {
+    logEvent(`Refund amount must be 1-${originalAmount} cents total across ${count} request(s)`);
+    return;
+  }
+  const perRefund = Math.floor(amount / count);
+  const remainder = amount - perRefund * count;
+  const amounts = Array.from({ length: count }, (_, index) => perRefund + (index === count - 1 ? remainder : 0));
+  refundState = { enabled: true, totalSplits: count, currentSplit: 0, splitAmounts: amounts, splitTxns: [], originalReference };
+  logEvent(`Refund started: ${count} request(s), amounts: ${amounts.map(formatMoney).join(', ')}`);
+  executeRefundNext();
+}
+
+async function executeRefundNext() {
+  if (!refundState.enabled || refundState.currentSplit >= refundState.totalSplits) {
+    if (refundState.enabled) logEvent(`Refund completed: ${refundState.splitTxns.length}/${refundState.totalSplits} request(s)`);
+    refundState.enabled = false;
+    return;
+  }
+  const index = refundState.currentSplit;
+  const txn = createTxnRecord(TxnType.REFUND);
+  txn.totalCents = refundState.splitAmounts[index];
+  txn.amount = { orderAmount: txn.totalCents, priceCurrency: getConfig().currency, totalAmount: txn.totalCents };
+  txn.refundBatch = { index: index + 1, total: refundState.totalSplits };
+  refundState.splitTxns.push(txn);
+  startTxnProgress(txn);
+  const payload = { ...basePayload(), transactionRequestId: txn.requestId, amount: txn.amount, description: `Refund ${index + 1}/${refundState.totalSplits}`, printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL, pushToTerminal: true, ...refundState.originalReference };
+  try { const r = await callProxy('POST', API_PATHS.REFUND, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Refund ${index + 1} failed: ${e.message}`); refundState.enabled = false; }
 }
 
 // --- Batch Close ---
@@ -690,7 +724,7 @@ async function executeAbort() {
 }
 
 function getOriginalTransactionReference(origTxn) {
-  const referenceType = document.getElementById('originalTransactionReference')?.value || 'transactionId';
+  const referenceType = document.querySelector('.detail-reference-select')?.dataset.reference || 'transactionId';
   if (referenceType === 'transactionRequestId' && origTxn?.requestId) {
     return { originalTransactionRequestId: origTxn.requestId };
   }
@@ -886,6 +920,23 @@ function checkSplitNext() {
   }
 }
 
+function checkRefundNext() {
+  if (!refundState.enabled || !activeTxn?.terminalEnded) return;
+  if (activeTxn.status === TxnStatus.FAILED || activeTxn.notifyStatus === TxnStatus.FAILED) {
+    logEvent(`Refund ${refundState.currentSplit + 1}/${refundState.totalSplits} failed. Remaining requests stopped.`);
+    refundState.enabled = false;
+    return;
+  }
+  refundState.currentSplit++;
+  if (refundState.currentSplit < refundState.totalSplits) {
+    logEvent(`Refund ${refundState.currentSplit}/${refundState.totalSplits} ended. Starting next...`);
+    executeRefundNext();
+  } else {
+    logEvent(`All ${refundState.totalSplits} refund requests completed.`);
+    refundState.enabled = false;
+  }
+}
+
 // --- Merchant Query ---
 async function queryMerchant() {
   const cfg = getConfig();
@@ -984,7 +1035,13 @@ function handleTerminalEvent(parsed) {
     const termStatus = document.getElementById('progressTerminalStatus');
     if (termStatus) { termStatus.textContent = '🔌 Terminal: ' + activeTxn._lastTerminalEvent; termStatus.classList.add('visible'); }
   }
-  if (snap.eventType === 'TRANSACTION_ENDED') { activeTxn.terminalEnded = true; logEvent('Terminal ended.'); checkFinalState(); checkSplitNext(); }
+  if (snap.eventType === 'TRANSACTION_ENDED') {
+    activeTxn.terminalEnded = true;
+    logEvent('Terminal ended.');
+    checkFinalState();
+    checkSplitNext();
+    checkRefundNext();
+  }
   updateDevConsole();
 }
 
