@@ -1117,7 +1117,7 @@ function handleTerminalEvent(parsed) {
   if (snap.transactionId && activeTxn) activeTxn.transactionId = snap.transactionId;
   if (snap.eventType) {
     const desc = terminalEventDesc(snap.eventType);
-    logEvent(`[terminal] ${snap.eventType}${desc ? ' - ' + desc : ''}`);
+    logEvent(`[terminal] ${snap.eventType}${desc ? ' - ' + desc : ''}`, parsed.ts);
     // Save last terminal event for badge display
     activeTxn._lastTerminalEvent = desc || snap.eventType;
     const termStatus = document.getElementById('progressTerminalStatus');
@@ -1125,7 +1125,7 @@ function handleTerminalEvent(parsed) {
   }
   if (snap.eventType === 'TRANSACTION_ENDED') {
     activeTxn.terminalEnded = true;
-    logEvent('Terminal ended.');
+    logEvent('Terminal ended.', parsed.ts);
     checkFinalState();
     checkSplitNext();
     checkRefundNext();
@@ -1144,12 +1144,13 @@ function handleWebhookEvent(parsed) {
   // Save full webhook data for detail display
   activeTxn.webhookData = body;
   saveTransactions();
-  logEvent(`[webhook] status=${snap.transactionStatus}`);
+  logEvent(`[webhook] status=${snap.transactionStatus}`, parsed.ts);
   checkFinalState();
 }
 
 function checkFinalState() {
   if (!activeTxn) return;
+  if (!activeTxn.terminalEnded) return;
   const status = activeTxn.notifyStatus;
   if (!status) return;
   if (status !== TxnStatus.SUCCESS && status !== TxnStatus.FAILED) return;
@@ -1186,7 +1187,7 @@ function collectPlainObjects(obj, acc = []) { if (!obj || typeof obj !== 'object
 
 // === Dev Console ===
 function setEventBadge(state) { if (!el.eventBadge) return; el.eventBadge.className = `dev-badge ${state}`; el.eventBadge.textContent = { idle: 'Disconnected', connected: 'Connected', error: 'Error' }[state] || 'Disconnected'; }
-function logEvent(text) { if (!el.eventLog) return; const i = document.createElement('div'); i.className = 'event-item'; i.innerHTML = `<div class="event-time">${formatTime(Date.now())}</div><div class="event-text">${text}</div>`; el.eventLog.prepend(i); }
+function logEvent(text, timestamp = Date.now()) { if (!el.eventLog) return; const i = document.createElement('div'); i.className = 'event-item'; i.innerHTML = `<div class="event-time">${formatTime(timestamp || Date.now())}</div><div class="event-text">${text}</div>`; el.eventLog.prepend(i); }
 function updateDevConsole() { if (!activeTxn) return; if (el.txnRef) el.txnRef.textContent = activeTxn.orderId || '-'; if (el.txnReq) el.txnReq.textContent = activeTxn.requestId || '-'; if (el.txnState) el.txnState.textContent = activeTxn.status || 'Idle'; }
 
 // === Modal ===
