@@ -49,6 +49,7 @@ const API_PATHS = {
   QUERY: '/v1/transaction/query',
   BATCH_QUERY: '/v1/settlement/batch-query',
   BATCH_CLOSE: '/v1/settlement/batch-close',
+  BATCH_CLOSE_LIST: '/v1/settlement/batch-close-list',
   CHECKOUT_CREATE: '/v1/checkout/create-session',
   CHECKOUT_EXPIRE: '/v1/checkout/expire-session',
   MERCHANT_QUERY: '/v1/merchant/query',
@@ -661,6 +662,40 @@ async function executeBatchClose() {
   } catch (e) { logEvent(`Batch close failed: ${e.message}`); txn.status = TxnStatus.FAILED; txn.errorMessage = e.message; txn.updatedAt = Date.now(); saveTransactions(); renderProgress(); }
 }
 
+// --- Closed Batch List ---
+async function executeBatchCloseList() {
+  const txn = createTxnRecord('Batch Close List');
+  startTxnProgress(txn);
+  const payload = basePayload();
+  try {
+    const r = await callProxy('GET', API_PATHS.BATCH_CLOSE_LIST, payload);
+    const code = extractCodeFromResponse(r.data);
+    const msg = extractMsgFromResponse(r.data);
+    logEvent(`Batch close list: HTTP ${r.httpStatus}, code=${code || '0'}, msg=${msg}`);
+    if (code && code !== '0') {
+      txn.status = TxnStatus.FAILED;
+      txn.errorMessage = `[${code}] ${msg}`;
+    } else {
+      txn.status = TxnStatus.SUCCESS;
+      txn.queryData = r.data?.data?.data || r.data?.data || r.data;
+      txn.webhookData = txn.queryData;
+    }
+    txn.updatedAt = Date.now();
+    saveTransactions();
+    stopRecentEventPolling();
+    renderProgress();
+    updateDevConsole();
+  } catch (e) {
+    logEvent(`Batch close list failed: ${e.message}`);
+    txn.status = TxnStatus.FAILED;
+    txn.errorMessage = e.message;
+    txn.updatedAt = Date.now();
+    saveTransactions();
+    stopRecentEventPolling();
+    renderProgress();
+  }
+}
+
 // --- Query ---
 async function runQuery(requestId) {
   const cfg = getConfig();
@@ -1165,6 +1200,7 @@ function bindEvents() {
   el.historyBtn?.addEventListener('click', () => navigateTo(AppView.HISTORY));
   el.historyBackBtn?.addEventListener('click', () => navigateTo(AppView.MENU));
   document.getElementById('batchCloseBtn')?.addEventListener('click', () => executeBatchClose());
+  document.getElementById('batchCloseListBtn')?.addEventListener('click', () => executeBatchCloseList());
   document.getElementById('clearHistoryBtn')?.addEventListener('click', () => {
     if (!confirm('Clear all transaction records?')) return;
     transactions = []; activeTxn = null; historyPage = 1;
