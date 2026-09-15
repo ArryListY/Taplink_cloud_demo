@@ -7,8 +7,10 @@
 const FIXED_NOTIFY_WEBHOOK_URL = 'http://47.77.239.198/webhook/sunbay';
 const FIXED_TERMINAL_EVENT_NOTIFY_URL = 'http://47.77.239.198/terminal-events/sunbay';
 const STORAGE_KEY = 'taplink_cloud_demo_config_v2';
+const ENV_PROFILES_STORAGE_KEY = 'taplink_cloud_demo_env_profiles_v1';
 const HISTORY_STORAGE_KEY = 'taplink_cloud_demo_history_v1';
 const SETTINGS_STORAGE_KEY = 'taplink_cloud_demo_settings_v1';
+const CONFIG_FIELDS = ['apiKey', 'appId', 'merchantId', 'terminalSn', 'currency', 'returnUrl', 'customBaseUrl'];
 
 const PRODUCTS = [
   { id: 'p1', name: 'Americano', icon: '☕️', desc: 'Classic espresso + hot water', priceCents: 550 },
@@ -172,11 +174,14 @@ function getDisplayAmount(txn) {
 function loadConfig() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const cfg = JSON.parse(raw);
+    const cfg = raw ? JSON.parse(raw) : {};
     ['backendUrl','envType','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(k => {
-      if (cfg[k] && el[k]) el[k].value = cfg[k];
+      if (cfg[k] !== undefined && el[k]) el[k].value = cfg[k];
     });
+    const profiles = loadEnvironmentProfiles();
+    const env = el.envType?.value || 'uat';
+    if (profiles[env]) applyEnvironmentProfile(env, profiles);
+    else if (raw && Object.keys(profiles).length === 0) saveEnvironmentProfile('uat');
   } catch { /* ignore */ }
 }
 function saveConfig() {
@@ -185,6 +190,40 @@ function saveConfig() {
     ['backendUrl','envType','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(k => { o[k] = el[k]?.value || ''; });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(o));
   } catch { /* ignore */ }
+}
+function loadEnvironmentProfiles() {
+  try {
+    const raw = localStorage.getItem(ENV_PROFILES_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+function saveEnvironmentProfile(env = el.envType?.value || 'uat') {
+  if (!['uat', 'production'].includes(env)) return;
+  try {
+    const profiles = loadEnvironmentProfiles();
+    profiles[env] = {};
+    CONFIG_FIELDS.forEach(field => { profiles[env][field] = el[field]?.value || ''; });
+    localStorage.setItem(ENV_PROFILES_STORAGE_KEY, JSON.stringify(profiles));
+    saveConfig();
+    updateEnvironmentProfileStatus(`Saved ${env.toUpperCase()} parameters`);
+  } catch { /* ignore */ }
+}
+function applyEnvironmentProfile(env = el.envType?.value || 'uat', profiles = loadEnvironmentProfiles()) {
+  const profile = profiles[env];
+  if (!profile) {
+    updateEnvironmentProfileStatus(`No saved ${env.toUpperCase()} parameters`);
+    return false;
+  }
+  CONFIG_FIELDS.forEach(field => {
+    if (el[field] && profile[field] !== undefined) el[field].value = profile[field];
+  });
+  saveConfig();
+  updateEnvironmentProfileStatus(`Applied ${env.toUpperCase()} parameters`);
+  return true;
+}
+function updateEnvironmentProfileStatus(message) {
+  const status = document.getElementById('environmentProfileStatus');
+  if (status) status.textContent = message;
 }
 function loadTransactions() { try { const r = localStorage.getItem(HISTORY_STORAGE_KEY); if (r) transactions = JSON.parse(r); } catch { transactions = []; } }
 function saveTransactions() { try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(transactions)); } catch {} }
@@ -1218,7 +1257,13 @@ function bindEvents() {
   el.configModal?.addEventListener('click', (e) => { if (e.target.closest('[data-modal-close]')) closeModal(el.configModal); });
   document.getElementById('queryMerchantBtn')?.addEventListener('click', queryMerchant);
   document.getElementById('queryTerminalsBtn')?.addEventListener('click', queryMerchantTerminals);
-  ['backendUrl','envType','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(id => { const n = el[id]; if (n) { n.addEventListener('input', saveConfig); n.addEventListener('change', () => { saveConfig(); if (id === 'terminalSn' || id === 'backendUrl') { disconnectEventStream(); connectEventStream(); } }); } });
+  document.getElementById('saveEnvironmentProfileBtn')?.addEventListener('click', () => saveEnvironmentProfile());
+  ['backendUrl','customBaseUrl','apiKey','appId','merchantId','terminalSn','currency','returnUrl'].forEach(id => { const n = el[id]; if (n) { n.addEventListener('input', saveConfig); n.addEventListener('change', () => { saveConfig(); if (id === 'terminalSn' || id === 'backendUrl') { disconnectEventStream(); connectEventStream(); } }); } });
+  el.envType?.addEventListener('change', () => {
+    applyEnvironmentProfile(el.envType.value);
+    saveConfig();
+    if (el.terminalSn) { disconnectEventStream(); connectEventStream(); }
+  });
   ['tipEnabled','tipSuggestionsEnabled','taxEnabled','signatureEnabled'].forEach(id => { document.getElementById(id)?.addEventListener('change', () => { toggleSubSettings(); saveSettings(); }); });
   ['tipMode','tipOnScreenTip','tipWithTax','tipFeeMode','tipSuggestion1','tipSuggestion2','tipSuggestion3','taxRate','printReceipt','signatureMode','signatureThresholdEnabled','signatureThreshold'].forEach(id => { const n = document.getElementById(id); if (n) { n.addEventListener('change', saveSettings); n.addEventListener('input', saveSettings); } });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(el.configModal); });

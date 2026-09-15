@@ -56,3 +56,4 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000
 - 页面发起交易后会回放后端最近的 webhook 事件，避免 SSE 短暂断开导致页面漏掉回调。
 - 浏览器直连真实 API 可能受 CORS 限制；如需稳定联调，建议通过后端代理转发。
 - “Closed Batch List” 使用 `GET /v1/settlement/batch-close-list`，默认查询当前终端最近 7 天的已关闭批次。
+- Settings 中可分别保存 UAT 与 Production 的 API Key、App ID、Merchant ID、Terminal SN、Currency、Return URL 等参数；切换环境后会自动应用对应参数组。
