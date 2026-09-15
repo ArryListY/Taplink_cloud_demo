@@ -4,8 +4,8 @@
 // ============================================================
 
 // === Constants ===
-const FIXED_NOTIFY_WEBHOOK_URL = 'http://47.77.239.198/webhook/sunbay';
-const FIXED_TERMINAL_EVENT_NOTIFY_URL = 'http://47.77.239.198/terminal-events/sunbay';
+const FIXED_NOTIFY_WEBHOOK_URL = 'https://webhook-test.sunbay-uat.us/webhook/sunbay';
+const FIXED_TERMINAL_EVENT_NOTIFY_URL = 'https://webhook-test.sunbay-uat.us/terminal-events/sunbay';
 const STORAGE_KEY = 'taplink_cloud_demo_config_v2';
 const ENV_PROFILES_STORAGE_KEY = 'taplink_cloud_demo_env_profiles_v1';
 const HISTORY_STORAGE_KEY = 'taplink_cloud_demo_history_v1';

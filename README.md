@@ -48,8 +48,8 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000
 ## Real 模式注意事项
 
 - 页面固定向请求写入以下两个回调地址，不允许在 UI 中覆盖：
-  - `notifyUrl`: `http://47.77.239.198/webhook/sunbay`
-  - `terminalEventNotifyUrl`: `http://47.77.239.198/terminal-events/sunbay`
+  - `notifyUrl`: `https://webhook-test.sunbay-uat.us/webhook/sunbay`
+  - `terminalEventNotifyUrl`: `https://webhook-test.sunbay-uat.us/terminal-events/sunbay`
 - 网关接口 HTTP 成功只代表请求受理，不代表交易批准；HTTP 失败或网络异常也不直接判定交易失败。
 - 交易弹窗实时展示终端事件；只有收到 `terminalEventNotifyUrl` 的 `TRANSACTION_ENDED`，并且收到 `notifyUrl` 回调中的 `transactionStatus`，才会显示最终成功/失败。
 - 两个回调先后顺序不固定：先到的结果会暂存，第二个条件满足后才确认交易。
