@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 WEBHOOK_SECRET = os.getenv("SUNBAY_WEBHOOK_SECRET", "")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
 # Fixed forwarding target: no runtime configuration required.
 DINGTALK_WEBHOOK_URL = "https://oapi.dingtalk.com/robot/send?access_token=1062a51ee471dcb80c04556865df3cdcb401d5dd584d5d279d882e3da6102eb9"
@@ -194,7 +195,7 @@ async def _forward_to_dingtalk(source_payload: dict[str, Any], event_type: str) 
 
 
 @app.post("/api/proxy")
-async def api_proxy(req: ProxyRequest) -> JSONResponse:
+async def api_proxy(req: ProxyRequest, request: Request) -> JSONResponse:
     method = req.method.upper()
     path = req.path
 
@@ -213,6 +214,17 @@ async def api_proxy(req: ProxyRequest) -> JSONResponse:
 
     request_url = _normalize_url(req.base_url, path, req.query)
     headers = req.headers or {}
+    payload = dict(req.payload)
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+    forwarded_host = request.headers.get("x-forwarded-host", "").split(",", 1)[0].strip()
+    forwarded_base = f"{forwarded_proto}://{forwarded_host}" if forwarded_proto and forwarded_host else ""
+    callback_base = PUBLIC_BASE_URL or forwarded_base or str(request.base_url).rstrip("/")
+    callback_host = urlsplit(callback_base).hostname or ""
+    if callback_host not in {"localhost", "127.0.0.1", "::1"}:
+        if payload.get("notifyUrl"):
+            payload["notifyUrl"] = f"{callback_base}/webhook/sunbay"
+        if payload.get("terminalEventNotifyUrl"):
+            payload["terminalEventNotifyUrl"] = f"{callback_base}/terminal-events/sunbay"
 
     await bus.publish(
         "api_request",
@@ -230,7 +242,7 @@ async def api_proxy(req: ProxyRequest) -> JSONResponse:
                 method=method,
                 url=request_url,
                 headers=headers,
-                json=req.payload if method != "GET" else None,
+                json=payload if method != "GET" else None,
             )
         except Exception as exc:  # noqa: BLE001
             await bus.publish("api_error", {"endpoint": f"{method} {path}", "error": str(exc)})
@@ -479,6 +491,20 @@ def _extract_payload_event_type(payload: Any) -> str:
     return ""
 
 
+def _extract_nested_value(payload: Any, names: tuple[str, ...]) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for name in names:
+        value = payload.get(name)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    for value in payload.values():
+        nested = _extract_nested_value(value, names)
+        if nested:
+            return nested
+    return ""
+
+
 def _is_test_webhook_payload(payload: Any) -> bool:
     if not isinstance(payload, dict):
         return False
@@ -510,9 +536,7 @@ async def _handle_incoming_webhook(request: Request, bus_event_type: str, defaul
         "payload": payload,
     }
     # Extract terminalSn from payload for multi-user routing
-    terminal_sn = ""
-    if isinstance(payload, dict):
-        terminal_sn = payload.get("terminalSn", "") or ""
+    terminal_sn = _extract_nested_value(payload, ("terminalSn", "terminal_sn"))
     await bus.publish(bus_event_type, event_message, terminal_sn=terminal_sn)
 
     payload_event_type = _extract_payload_event_type(payload)

@@ -124,6 +124,21 @@ function getConfig() {
   };
 }
 
+function getWebhookUrls() {
+  const backendUrl = getConfig().backendUrl;
+  try {
+    const parsed = new URL(backendUrl);
+    const isLocal = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+    if (!isLocal) {
+      return {
+        notifyUrl: `${backendUrl}/webhook/sunbay`,
+        terminalEventNotifyUrl: `${backendUrl}/terminal-events/sunbay`,
+      };
+    }
+  } catch { /* Use the fixed callback for invalid or local URLs. */ }
+  return { notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
+}
+
 function getDefaultBackendUrl() {
   if (typeof window !== 'undefined' && window.location) {
     const host = window.location.hostname;
@@ -399,7 +414,7 @@ function renderProgress() {
     if (el.abortBtn) el.abortBtn.classList.add('hidden');
     removeCheckoutLink(); showViewDetailBtn();
   } else {
-    if (el.progressTitle) el.progressTitle.textContent = 'Processing...';
+    if (el.progressTitle) el.progressTitle.textContent = activeTxn.progressMessage || 'Processing...';
     if (iconWrapper) iconWrapper.innerHTML = '<div class="progress-spinner"></div>';
     if (el.abortBtn) { el.abortBtn.classList.remove('hidden'); el.abortBtn.disabled = false; el.abortBtn.textContent = activeTxn.channel === 'online' ? 'Close Session' : 'Abort Transaction'; }
     removeViewDetailBtn();
@@ -598,7 +613,8 @@ async function executeSale() {
   const cfg = getConfig(); const s = getSettings();
   const txn = createTxnRecord(TxnType.SALE); startTxnProgress(txn);
   const description = Object.entries(cart).filter(([,q]) => q > 0).map(([pid, qty]) => { const p = PRODUCTS.find(x => x.id === pid); return `${p.name} x${qty}`; }).join(', ') || 'Sale';
-  const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL, printReceipt: s.printReceipt !== 'NONE' ? s.printReceipt : undefined, tipConfig: buildTipConfig(), signatureConfig: buildSignatureConfig() };
+  const webhookUrls = getWebhookUrls();
+  const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description, ...webhookUrls, printReceipt: s.printReceipt !== 'NONE' ? s.printReceipt : undefined, tipConfig: buildTipConfig(), signatureConfig: buildSignatureConfig() };
   try { const r = await callProxy('POST', API_PATHS.SALE, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
 }
 
@@ -1108,18 +1124,29 @@ function handleEventData(raw) {
   if (activeTxn.seenEventKeys.length > 500) activeTxn.seenEventKeys = activeTxn.seenEventKeys.slice(-200);
   if (parsed.type === 'terminal_notify_received') handleTerminalEvent(parsed);
   else if (parsed.type === 'webhook_received') handleWebhookEvent(parsed);
+  else if (parsed.type === 'terminal_event') handlePaymentEvent(parsed);
 }
 
-function handleTerminalEvent(parsed) {
+function handlePaymentEvent(parsed) {
+  const eventPayload = parsed?.payload || {};
+  let body = eventPayload.data || {};
+  if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = { eventType: body }; } }
+  if (!body || typeof body !== 'object') body = {};
+  const normalized = { ...parsed, payload: { payload: { ...body, eventType: body.eventType || eventPayload.event || body.event } } };
+  handleTerminalEvent(normalized, eventPayload.terminalSn || body.terminalSn || '');
+}
+
+function handleTerminalEvent(parsed, terminalSn = '') {
   const body = parsed?.payload?.payload || {};
   const snap = extractTerminalSnapshot(body);
-  if (!matchesActiveTxn(snap.transactionRequestId, snap.referenceOrderId, snap.transactionId)) return;
+  if (!matchesActiveTxn(snap.transactionRequestId, snap.referenceOrderId, snap.transactionId, terminalSn || parsed.terminalSn || body.terminalSn)) return;
   if (snap.transactionId && activeTxn) activeTxn.transactionId = snap.transactionId;
   if (snap.eventType) {
     const desc = terminalEventDesc(snap.eventType);
     logEvent(`[terminal] ${snap.eventType}${desc ? ' - ' + desc : ''}`, parsed.ts);
     // Save last terminal event for badge display
     activeTxn._lastTerminalEvent = desc || snap.eventType;
+    activeTxn.progressMessage = desc || snap.eventType;
     const termStatus = document.getElementById('progressTerminalStatus');
     if (termStatus) { termStatus.textContent = '🔌 Terminal: ' + activeTxn._lastTerminalEvent; termStatus.classList.add('visible'); }
   }
@@ -1130,6 +1157,7 @@ function handleTerminalEvent(parsed) {
     checkSplitNext();
     checkRefundNext();
   }
+  renderProgress();
   updateDevConsole();
 }
 
@@ -1139,7 +1167,10 @@ function handleWebhookEvent(parsed) {
   const snap = extractWebhookSnapshot(body);
   if (!matchesActiveTxn(snap.transactionRequestId, snap.referenceOrderId, snap.transactionId)) return;
   if (snap.transactionId && activeTxn) activeTxn.transactionId = snap.transactionId;
-  if (!snap.transactionStatus) return;
+  if (!snap.transactionStatus) {
+    logEvent('[webhook] received without transaction status', parsed.ts);
+    return;
+  }
   activeTxn.notifyStatus = normalizeStatus(snap.transactionStatus);
   // Save full webhook data for detail display
   activeTxn.webhookData = body;
@@ -1150,7 +1181,6 @@ function handleWebhookEvent(parsed) {
 
 function checkFinalState() {
   if (!activeTxn) return;
-  if (!activeTxn.terminalEnded) return;
   const status = activeTxn.notifyStatus;
   if (!status) return;
   if (status !== TxnStatus.SUCCESS && status !== TxnStatus.FAILED) return;
@@ -1165,11 +1195,13 @@ function confirmFinalState(status) {
   saveTransactions(); stopRecentEventPolling(); renderProgress(); updateDevConsole();
 }
 
-function matchesActiveTxn(reqId, refId, txnId) {
+function matchesActiveTxn(reqId, refId, txnId, terminalSn = '') {
   if (!activeTxn) return false;
   if (activeTxn.requestId && reqId && reqId === activeTxn.requestId) return true;
   if (activeTxn.orderId && refId && refId === activeTxn.orderId) return true;
   if (activeTxn.transactionId && txnId && txnId === activeTxn.transactionId) return true;
+  const configuredTerminalSn = getConfig().terminalSn;
+  if (!reqId && !refId && !txnId && terminalSn && configuredTerminalSn && terminalSn === configuredTerminalSn) return true;
   return false;
 }
 
@@ -1181,9 +1213,25 @@ function extractIdsFromResponse(data) { const r = { transactionId: '', transacti
 function extractStatusFromResponse(data) { if (!data) return null; for (const n of collectPlainObjects(data)) { const s = n.transactionStatus || n.status; if (s) { const u = String(s).toUpperCase(); if (['S','SUCCESS','APPROVED','COMPLETED'].includes(u)) return TxnStatus.SUCCESS; if (['F','FAILED','DECLINED','CANCELLED','VOIDED','ABORTED'].includes(u)) return TxnStatus.FAILED; if (['P','I','PROCESSING'].includes(u)) return TxnStatus.PROCESSING; } } return null; }
 function extractCodeFromResponse(data) { if (!data) return ''; for (const n of collectPlainObjects(data)) { if (n.code !== undefined) return String(n.code); } return ''; }
 function extractMsgFromResponse(data) { if (!data) return ''; for (const n of collectPlainObjects(data)) { if (n.msg) return String(n.msg); if (n.message) return String(n.message); } return ''; }
-function extractTerminalSnapshot(body) { let eventType='', transactionId='', transactionRequestId='', referenceOrderId=''; for (const n of collectPlainObjects(body)) { if (!eventType && n.eventType) eventType = String(n.eventType).toUpperCase(); if (!transactionId && n.transactionId) transactionId = String(n.transactionId); if (!transactionRequestId && n.transactionRequestId) transactionRequestId = String(n.transactionRequestId); if (!referenceOrderId && n.referenceOrderId) referenceOrderId = String(n.referenceOrderId); } return { eventType, transactionId, transactionRequestId, referenceOrderId }; }
-function extractWebhookSnapshot(body) { let transactionId='', transactionRequestId='', referenceOrderId='', transactionStatus=''; for (const n of collectPlainObjects(body)) { if (!transactionId && n.transactionId) transactionId = String(n.transactionId); if (!transactionRequestId && n.transactionRequestId) transactionRequestId = String(n.transactionRequestId); if (!referenceOrderId && n.referenceOrderId) referenceOrderId = String(n.referenceOrderId); if (!transactionStatus && n.transactionStatus) transactionStatus = String(n.transactionStatus).toUpperCase(); } return { transactionId, transactionRequestId, referenceOrderId, transactionStatus }; }
-function collectPlainObjects(obj, acc = []) { if (!obj || typeof obj !== 'object') return acc; if (Array.isArray(obj)) obj.forEach(i => collectPlainObjects(i, acc)); else { acc.push(obj); Object.values(obj).forEach(v => { if (v && typeof v === 'object') collectPlainObjects(v, acc); }); } return acc; }
+function readField(node, names) {
+  for (const name of names) {
+    if (node[name] !== undefined && node[name] !== null && String(node[name]).trim()) return String(node[name]).trim();
+  }
+  return '';
+}
+function extractTerminalSnapshot(body) { let eventType='', transactionId='', transactionRequestId='', referenceOrderId=''; for (const n of collectPlainObjects(body)) { if (!eventType) eventType = readField(n, ['eventType', 'event', 'type']).toUpperCase(); if (!transactionId) transactionId = readField(n, ['transactionId', 'transaction_id']); if (!transactionRequestId) transactionRequestId = readField(n, ['transactionRequestId', 'transaction_request_id', 'requestId']); if (!referenceOrderId) referenceOrderId = readField(n, ['referenceOrderId', 'reference_order_id', 'orderId']); } return { eventType, transactionId, transactionRequestId, referenceOrderId }; }
+function extractWebhookSnapshot(body) { let transactionId='', transactionRequestId='', referenceOrderId='', transactionStatus=''; for (const n of collectPlainObjects(body)) { if (!transactionId) transactionId = readField(n, ['transactionId', 'transaction_id']); if (!transactionRequestId) transactionRequestId = readField(n, ['transactionRequestId', 'transaction_request_id', 'requestId']); if (!referenceOrderId) referenceOrderId = readField(n, ['referenceOrderId', 'reference_order_id', 'orderId']); if (!transactionStatus) transactionStatus = readField(n, ['transactionStatus', 'transaction_status', 'status', 'state']).toUpperCase(); } return { transactionId, transactionRequestId, referenceOrderId, transactionStatus }; }
+function collectPlainObjects(obj, acc = []) {
+  if (typeof obj === 'string') {
+    const text = obj.trim();
+    if (text.startsWith('{') || text.startsWith('[')) { try { collectPlainObjects(JSON.parse(text), acc); } catch { /* Ignore non-JSON event text. */ } }
+    return acc;
+  }
+  if (!obj || typeof obj !== 'object') return acc;
+  if (Array.isArray(obj)) obj.forEach(i => collectPlainObjects(i, acc));
+  else { acc.push(obj); Object.values(obj).forEach(v => collectPlainObjects(v, acc)); }
+  return acc;
+}
 
 // === Dev Console ===
 function setEventBadge(state) { if (!el.eventBadge) return; el.eventBadge.className = `dev-badge ${state}`; el.eventBadge.textContent = { idle: 'Disconnected', connected: 'Connected', error: 'Error' }[state] || 'Disconnected'; }

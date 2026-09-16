@@ -6,7 +6,7 @@
 
 - 线上收银台：页面直接提供 `Sale` 与 `Auth` 主操作，商品、金额和回调进度清晰展示
 - 抽屉式调试：环境、认证、商户参数、固定回调地址、请求参数、网关响应和事件日志均通过按钮抽屉查看
-- 交易追踪：`terminalEventNotifyUrl` 的 `TRANSACTION_ENDED` 与 `notifyUrl` 的 `transactionStatus` 同时满足后，才确认交易最终结果
+- 交易追踪：`notifyUrl` 的 `transactionStatus`（包括 `S`）用于确认最终结果，`terminalEventNotifyUrl` 的事件用于展示终端进度和分单流程
 - 交易接口：内置半集成 Sale/Auth/撤销/退款/查单、已关闭批次查询及其他线上接口
 
 ## 快速使用（仅前端静态）
@@ -51,8 +51,8 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000
   - `notifyUrl`: `https://webhook-test.sunbay-uat.us/webhook/sunbay`
   - `terminalEventNotifyUrl`: `https://webhook-test.sunbay-uat.us/terminal-events/sunbay`
 - 网关接口 HTTP 成功只代表请求受理，不代表交易批准；HTTP 失败或网络异常也不直接判定交易失败。
-- 交易弹窗实时展示终端事件；只有收到 `terminalEventNotifyUrl` 的 `TRANSACTION_ENDED`，并且收到 `notifyUrl` 回调中的 `transactionStatus`，才会显示最终成功/失败。
-- 两个回调先后顺序不固定：先到的结果会暂存，第二个条件满足后才确认交易。
+- 交易弹窗实时展示终端事件；收到 `notifyUrl` 回调中的最终 `transactionStatus`（例如 `S`）后立即显示成功/失败，不再依赖终端结束事件。
+- 两个回调先后顺序不固定：终端事件用于进度展示，交易结果回调独立更新最终状态。
 - 页面发起交易后会回放后端最近的 webhook 事件，避免 SSE 短暂断开导致页面漏掉回调。
 - 浏览器直连真实 API 可能受 CORS 限制；如需稳定联调，建议通过后端代理转发。
 - “Closed Batch List” 使用 `GET /v1/settlement/batch-close-list`，默认查询当前终端最近 7 天的已关闭批次。
