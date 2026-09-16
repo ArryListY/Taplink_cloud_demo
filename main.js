@@ -673,7 +673,7 @@ async function executeBatchClose() {
   const txn = createTxnRecord(TxnType.BATCH_CLOSE); startTxnProgress(txn);
   const cfg = getConfig();
   // Step 1: Query batch to get channelCode list
-  const queryPayload = { appId: cfg.appId, merchantId: cfg.merchantId, terminalSn: cfg.terminalSn };
+  const queryPayload = { appId: cfg.appId, merchantId: cfg.merchantId, terminalSn: cfg.terminalSn, currency: cfg.currency };
   try {
     const qr = await callProxy('GET', API_PATHS.BATCH_QUERY, queryPayload);
     const qCode = extractCodeFromResponse(qr.data);
@@ -721,7 +721,8 @@ async function executeBatchClose() {
 async function executeBatchCloseList() {
   const txn = createTxnRecord('Batch Close List');
   startTxnProgress(txn);
-  const payload = basePayload();
+  const cfg = getConfig();
+  const payload = { ...basePayload(), currency: cfg.currency };
   try {
     const r = await callProxy('GET', API_PATHS.BATCH_CLOSE_LIST, payload);
     const code = extractCodeFromResponse(r.data);

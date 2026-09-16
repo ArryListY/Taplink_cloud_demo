@@ -263,7 +263,7 @@ async def api_proxy(req: ProxyRequest, request: Request) -> JSONResponse:
         "data": data,
     }
     await bus.publish("api_response", payload)
-    return JSONResponse(payload, status_code=response.status_code)
+    return JSONResponse(payload)
 
 
 async def _terminal_mock_loop(stop_event: asyncio.Event, terminal_sn: str) -> None:
