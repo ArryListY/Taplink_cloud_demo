@@ -58,7 +58,7 @@
           <div class="field-grid">
             <label>Order Amount (cents)<input id="orderAmountInput" type="number" min="1" max="9007199254740991" step="1" placeholder="Use cart subtotal" aria-describedby="orderAmountHint orderAmountError" /></label>
           </div>
-          <p id="orderAmountHint" class="split-hint">Leave blank to use the cart subtotal. 1000 cents = 10.00.</p>
+          <p id="orderAmountHint" class="split-hint">Sets the order amount sent to the API. Leave blank to use the cart subtotal. 1000 cents = 10.00. Manual amounts use a single payment; additional amounts are added to the total.</p>
           <p id="orderAmountError" class="split-hint hidden" role="alert">Enter a positive whole number of cents within the supported range.</p>
         </div>
 
@@ -343,6 +343,6 @@
     </section>
   </div>
 
-  <script src="./main.js"></script>
+  <script src="./main.js?v=20261012-order-amount-2"></script>
 </body>
 </html>

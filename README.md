@@ -6,6 +6,7 @@
 
 - 线上收银台：页面直接提供 `Sale` 与 `Auth` 主操作，商品、金额和回调进度清晰展示
 - 结账页支持手动输入 `Order Amount (cents)`：留空使用商品合计，填写正整数后覆盖订单基础金额；附加金额继续单独相加。新订单会清空手动金额。在线 Checkout 使用一条 `Custom order` 商品明细，与手动金额保持一致。
+- 手动金额直接写入最终接口请求的 `amount.orderAmount`；手动模式使用单笔支付并禁用分单，避免被每笔分单金额覆盖。Event Flow 会显示实际发送的 `orderAmount` 和（如有）`totalAmount`，其中 `totalAmount` 包含附加金额。
 - 抽屉式调试：环境、认证、商户参数、固定回调地址、请求参数、网关响应和事件日志均通过按钮抽屉查看
 - 交易追踪：`notifyUrl` 的 `transactionStatus`（包括 `S`）用于确认最终结果，`terminalEventNotifyUrl` 的事件用于展示终端进度和分单流程
 - 交易接口：内置半集成 Sale/Auth/撤销/退款/查单、已关闭批次查询及其他线上接口

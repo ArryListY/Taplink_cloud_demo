@@ -181,6 +181,10 @@ function getOrderAmount() {
   return Number.isSafeInteger(amount) && amount > 0 ? amount : NaN;
 }
 
+function hasManualOrderAmount() {
+  return Boolean(el.orderAmountInput?.value.trim());
+}
+
 function getOrderTotal() {
   const subtotal = getOrderAmount();
   return subtotal + (orderAmounts.taxAmount || 0) + (orderAmounts.tipAmount || 0) + (orderAmounts.surchargeAmount || 0) + (orderAmounts.cashbackAmount || 0);
@@ -397,6 +401,12 @@ function renderCheckout() {
   if (el.checkoutTotal) el.checkoutTotal.textContent = validAmount ? formatMoney(total) : '—';
   if (el.payBtnAmount) el.payBtnAmount.textContent = validAmount ? formatMoney(total) : '—';
   if (el.payBtn) el.payBtn.disabled = !validAmount;
+  const splitEnabled = document.getElementById('splitEnabled');
+  if (splitEnabled) {
+    if (hasManualOrderAmount()) splitEnabled.checked = false;
+    splitEnabled.disabled = hasManualOrderAmount();
+    document.getElementById('splitSettings')?.classList.toggle('hidden', !splitEnabled.checked);
+  }
   updateSplitPreview();
 }
 
@@ -566,12 +576,22 @@ function renderHistory() {
 // ============================================================
 // API Layer (aligned with CloudPaymentService)
 // ============================================================
-async function callProxy(method, path, payload, query = {}) {
+async function callProxy(method, path, payload, query = {}, orderAmountOverride = null) {
   const cfg = getConfig();
+  if (orderAmountOverride !== null) {
+    if (!Number.isSafeInteger(orderAmountOverride) || orderAmountOverride <= 0) throw new Error('Invalid order amount');
+    const amount = { ...payload.amount, orderAmount: orderAmountOverride };
+    if ('totalAmount' in amount) {
+      amount.totalAmount = orderAmountOverride + (amount.tipAmount || 0) + (amount.taxAmount || 0) + (amount.surchargeAmount || 0) + (amount.cashbackAmount || 0);
+      if (!Number.isSafeInteger(amount.totalAmount)) throw new Error('Invalid total amount');
+    }
+    payload = { ...payload, amount };
+  }
   const headers = { 'X-Timestamp': `${Date.now()}`, 'X-Client-Request-Id': uid('CID') };
   if (method !== 'GET') headers['Content-Type'] = 'application/json';
   const auth = buildAuth(); if (auth) headers['Authorization'] = auth;
   const body = { mode: 'real', base_url: cfg.baseUrl, method, path, headers, payload: method === 'GET' ? {} : payload, query: method === 'GET' ? payload : query };
+  if (method !== 'GET' && payload.amount) logEvent(`Sending ${path}: orderAmount=${payload.amount.orderAmount} cents${payload.amount.totalAmount !== undefined ? ', totalAmount=' + payload.amount.totalAmount + ' cents' : ''}`);
   const resp = await fetch(`${cfg.backendUrl}/api/proxy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return await resp.json();
 }
@@ -630,21 +650,21 @@ async function executeSale() {
   const description = Object.entries(cart).filter(([,q]) => q > 0).map(([pid, qty]) => { const p = PRODUCTS.find(x => x.id === pid); return `${p.name} x${qty}`; }).join(', ') || 'Sale';
   const webhookUrls = getWebhookUrls();
   const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description, ...webhookUrls, printReceipt: s.printReceipt !== 'NONE' ? s.printReceipt : undefined, tipConfig: buildTipConfig(), signatureConfig: buildSignatureConfig() };
-  try { const r = await callProxy('POST', API_PATHS.SALE, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
+  try { const r = await callProxy('POST', API_PATHS.SALE, payload, {}, txn.amount.orderAmount); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
 }
 
 // --- Auth ---
 async function executeAuth() {
   const txn = createTxnRecord(TxnType.AUTH); startTxnProgress(txn);
   const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description: 'Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, signatureConfig: buildSignatureConfig(), notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
-  try { const r = await callProxy('POST', API_PATHS.AUTH, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
+  try { const r = await callProxy('POST', API_PATHS.AUTH, payload, {}, txn.amount.orderAmount); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
 }
 
 // --- Forced Auth ---
 async function executeForcedAuth() {
   const txn = createTxnRecord(TxnType.FORCED_AUTH); startTxnProgress(txn);
   const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description: 'Forced Auth', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
-  try { const r = await callProxy('POST', API_PATHS.FORCED_AUTH, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
+  try { const r = await callProxy('POST', API_PATHS.FORCED_AUTH, payload, {}, txn.amount.orderAmount); await handleApiResult(r, txn); } catch (e) { logEvent(`Request failed: ${e.message}`); }
 }
 
 // --- Refund (referenced, from Detail) ---
@@ -807,7 +827,7 @@ async function executeOnlineCheckout() {
   const returnBaseUrl = `${window.location.origin}/return.html`;
   const payload = { appId: cfg.appId, merchantId: cfg.merchantId, referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description, productList, merchantReturnUrl: cfg.returnUrl || returnBaseUrl, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
   try {
-    const r = await callProxy('POST', API_PATHS.CHECKOUT_CREATE, payload);
+    const r = await callProxy('POST', API_PATHS.CHECKOUT_CREATE, payload, {}, txn.amount.orderAmount);
     if (!(await handleApiResult(r, txn))) return;
     const nodes = collectPlainObjects(r.data);
     for (const n of nodes) {
@@ -924,7 +944,7 @@ async function executeIncrementalAuthFromDetail(origTxn) {
 async function executeUnreferencedRefund() {
   const txn = createTxnRecord(TxnType.REFUND); startTxnProgress(txn);
   const payload = { ...basePayload(), referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: { orderAmount: txn.amount.orderAmount, priceCurrency: txn.amount.priceCurrency }, description: 'Unreferenced Refund', printReceipt: getSettings().printReceipt !== 'NONE' ? getSettings().printReceipt : undefined, signatureConfig: buildSignatureConfig(), notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
-  try { const r = await callProxy('POST', API_PATHS.REFUND, payload); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
+  try { const r = await callProxy('POST', API_PATHS.REFUND, payload, {}, txn.amount.orderAmount); await handleApiResult(r, txn); } catch (e) { logEvent(`Failed: ${e.message}`); }
 }
 
 // ============================================================
@@ -1283,7 +1303,7 @@ function bindEvents() {
     if (channel === 'online') { executeOnlineCheckout(); return; }
     // Check if split enabled
     const splitEnabled = document.getElementById('splitEnabled')?.checked;
-    if (splitEnabled && (selectedTxnType === TxnType.SALE || selectedTxnType === TxnType.AUTH)) {
+    if (splitEnabled && !hasManualOrderAmount() && (selectedTxnType === TxnType.SALE || selectedTxnType === TxnType.AUTH)) {
       startSplitPayment();
       return;
     }
