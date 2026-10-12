@@ -94,7 +94,7 @@ function initElements() {
     'eventBadge', 'subBtn', 'unsubBtn', 'clearEventsBtn', 'eventLog',
     'openConfigModalBtn', 'configModal',
     'backendUrl', 'envType', 'customBaseUrl', 'apiKey', 'appId', 'merchantId', 'terminalSn', 'currency', 'notifyUrl', 'configEventUrl', 'returnUrl',
-    'txnTypeSelect', 'additionalAmounts', 'tipAmountInput', 'taxAmountInput', 'surchargeInput', 'cashbackInput',
+    'txnTypeSelect', 'additionalAmounts', 'orderAmountInput', 'orderAmountError', 'tipAmountInput', 'taxAmountInput', 'surchargeInput', 'cashbackInput',
   ];
   ids.forEach(id => { el[id] = document.getElementById(id); });
 }
@@ -172,8 +172,17 @@ function getCartSubtotal() {
 
 function getCartCount() { return Object.values(cart).reduce((s, q) => s + q, 0); }
 
+function getOrderAmount() {
+  const input = el.orderAmountInput;
+  if (input?.validity?.badInput) return NaN;
+  const value = input?.value.trim() || '';
+  if (!value) return getCartSubtotal();
+  const amount = Number(value);
+  return Number.isSafeInteger(amount) && amount > 0 ? amount : NaN;
+}
+
 function getOrderTotal() {
-  const subtotal = getCartSubtotal();
+  const subtotal = getOrderAmount();
   return subtotal + (orderAmounts.taxAmount || 0) + (orderAmounts.tipAmount || 0) + (orderAmounts.surchargeAmount || 0) + (orderAmounts.cashbackAmount || 0);
 }
 
@@ -308,6 +317,8 @@ function resetOrder() {
   // Reset input fields
   const ids = ['tipAmountInput', 'taxAmountInput', 'surchargeInput', 'cashbackInput'];
   ids.forEach(id => { const e = document.getElementById(id); if (e) e.value = '0'; });
+  if (el.orderAmountInput) el.orderAmountInput.value = '';
+  if (el.orderAmountError) el.orderAmountError.classList.add('hidden');
 }
 
 function navigateTo(view, opts = {}) {
@@ -359,7 +370,7 @@ function updateFloatingCart() {
 function renderCheckout() {
   if (!el.checkoutCartList) return;
   el.checkoutCartList.innerHTML = '';
-  const subtotal = getCartSubtotal();
+  const subtotal = getOrderAmount();
   for (const [pid, qty] of Object.entries(cart)) {
     if (qty <= 0) continue;
     const p = PRODUCTS.find(x => x.id === pid);
@@ -375,13 +386,17 @@ function renderCheckout() {
   orderAmounts.surchargeAmount = parseInt(el.surchargeInput?.value) || 0;
   orderAmounts.cashbackAmount = parseInt(el.cashbackInput?.value) || 0;
   const total = getOrderTotal();
-  if (el.checkoutSubtotal) el.checkoutSubtotal.textContent = formatMoney(subtotal);
+  const validAmount = Number.isSafeInteger(subtotal) && subtotal > 0 && Number.isSafeInteger(total) && total > 0;
+  el.orderAmountError?.classList.toggle('hidden', validAmount || (!el.orderAmountInput?.value && !el.orderAmountInput?.validity?.badInput));
+  el.orderAmountInput?.setAttribute('aria-invalid', String(!validAmount));
+  if (el.orderAmountInput) el.orderAmountInput.placeholder = String(getCartSubtotal());
+  if (el.checkoutSubtotal) el.checkoutSubtotal.textContent = Number.isFinite(subtotal) ? formatMoney(subtotal) : '—';
   const taxLabel = document.getElementById('checkoutTaxLabel');
   if (taxLabel) taxLabel.textContent = 'Tax';
   if (el.checkoutTax) el.checkoutTax.textContent = formatMoney(orderAmounts.taxAmount);
-  if (el.checkoutTotal) el.checkoutTotal.textContent = formatMoney(total);
-  if (el.payBtnAmount) el.payBtnAmount.textContent = formatMoney(total);
-  if (el.payBtn) el.payBtn.disabled = total <= 0;
+  if (el.checkoutTotal) el.checkoutTotal.textContent = validAmount ? formatMoney(total) : '—';
+  if (el.payBtnAmount) el.payBtnAmount.textContent = validAmount ? formatMoney(total) : '—';
+  if (el.payBtn) el.payBtn.disabled = !validAmount;
   updateSplitPreview();
 }
 
@@ -567,7 +582,7 @@ function basePayload() {
 }
 
 function buildAmountObj() {
-  const subtotal = getCartSubtotal();
+  const subtotal = getOrderAmount();
   const obj = { orderAmount: subtotal, priceCurrency: getConfig().currency };
   // Only include non-zero additional amounts; tipConfig and tipAmount are mutually exclusive
   const tipConfig = buildTipConfig();
@@ -785,7 +800,9 @@ async function runQuery(requestId) {
 async function executeOnlineCheckout() {
   const cfg = getConfig();
   const txn = createTxnRecord(TxnType.CHECKOUT_SESSION, 'online'); startTxnProgress(txn);
-  const productList = Object.entries(cart).filter(([,q]) => q > 0).map(([pid, qty]) => { const p = PRODUCTS.find(x => x.id === pid); return { amount: p.priceCents, name: p.name, num: qty }; });
+  const productList = el.orderAmountInput?.value.trim()
+    ? [{ amount: txn.amount.orderAmount, name: 'Custom order', num: 1 }]
+    : Object.entries(cart).filter(([,q]) => q > 0).map(([pid, qty]) => { const p = PRODUCTS.find(x => x.id === pid); return { amount: p.priceCents, name: p.name, num: qty }; });
   const description = productList.map(it => `${it.name} x${it.num}`).join(', ') || 'Checkout';
   const returnBaseUrl = `${window.location.origin}/return.html`;
   const payload = { appId: cfg.appId, merchantId: cfg.merchantId, referenceOrderId: txn.orderId, transactionRequestId: txn.requestId, amount: txn.amount, description, productList, merchantReturnUrl: cfg.returnUrl || returnBaseUrl, notifyUrl: FIXED_NOTIFY_WEBHOOK_URL, terminalEventNotifyUrl: FIXED_TERMINAL_EVENT_NOTIFY_URL };
@@ -920,7 +937,7 @@ function updateSplitPreview() {
   if (!enabled) { preview.innerHTML = ''; return; }
   const totalAmount = getOrderTotal();
   const count = parseInt(document.getElementById('splitCount')?.value) || 2;
-  if (count < 2 || totalAmount <= 0) { preview.innerHTML = '<div class="split-preview-item"><span>Add items to cart first</span></div>'; return; }
+  if (count < 2 || !Number.isSafeInteger(totalAmount) || totalAmount <= 0) { preview.innerHTML = '<div class="split-preview-item"><span>Enter a valid order amount</span></div>'; return; }
   const perSplit = Math.floor(totalAmount / count);
   const remainder = totalAmount - perSplit * count;
   let html = '';
@@ -934,7 +951,7 @@ function updateSplitPreview() {
 function startSplitPayment() {
   const totalAmount = getOrderTotal();
   const count = parseInt(document.getElementById('splitCount')?.value) || 2;
-  if (count < 2 || totalAmount <= 0) { logEvent('Split requires at least 2 splits and amount > 0'); return; }
+  if (count < 2 || !Number.isSafeInteger(totalAmount) || totalAmount <= 0) { logEvent('Split requires at least 2 splits and a valid amount > 0'); return; }
 
   // Calculate split amounts (distribute remainder to last split)
   const perSplit = Math.floor(totalAmount / count);
@@ -1254,11 +1271,14 @@ function bindEvents() {
   // Transaction type select
   el.txnTypeSelect?.addEventListener('change', () => { selectedTxnType = el.txnTypeSelect.value; renderCheckout(); });
   // Additional amounts auto-update
-  ['tipAmountInput', 'taxAmountInput', 'surchargeInput', 'cashbackInput'].forEach(id => { document.getElementById(id)?.addEventListener('input', () => renderCheckout()); });
+  ['orderAmountInput', 'tipAmountInput', 'taxAmountInput', 'surchargeInput', 'cashbackInput'].forEach(id => { document.getElementById(id)?.addEventListener('input', () => renderCheckout()); });
   // Payment channel radio
   document.querySelectorAll('input[name="payChannel"]').forEach(r => { r.addEventListener('change', () => { document.querySelectorAll('.payment-option').forEach(o => o.classList.remove('active')); r.closest('.payment-option')?.classList.add('active'); }); });
   // Pay button - dispatch based on selected type and channel
   el.payBtn?.addEventListener('click', () => {
+    const orderAmount = getOrderAmount();
+    const total = getOrderTotal();
+    if (!Number.isSafeInteger(orderAmount) || orderAmount <= 0 || !Number.isSafeInteger(total) || total <= 0) { renderCheckout(); return; }
     const channel = document.querySelector('input[name="payChannel"]:checked')?.value || 'terminal';
     if (channel === 'online') { executeOnlineCheckout(); return; }
     // Check if split enabled
