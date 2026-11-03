@@ -172,19 +172,12 @@ def _notification(payload: Any, event_type: str, terminal_event: bool) -> tuple[
         if event == "PRINT_COMPLETED" and receipt.get("printResult") == "FAILED":
             headline = "签购单打印失败"
         title = f"Sunbay EVENT · {headline}"
-        keys = ("eventType", "eventStage", "receipt", "timestamp")
     else:
         kind = fields.get("transactionType") or fields.get("topic") or event_type
         status = fields.get("transactionStatus")
         outcome = {"S": "成功", "F": "失败", "P": "处理中", "I": "处理中"}.get(str(status), status)
         title = f"Sunbay RESULT · {kind}" + (f" {outcome}" if outcome else "")
-        keys = ("transactionType", "transactionStatus", "transactionAmount", "priceCurrency",
-                "transactionResultCode", "transactionResultMsg", "referenceOrderId", "completeTime")
-    keys += ("terminalSn", "transactionRequestId", "transactionId")
-    summary = {key: fields[key] for key in keys if key in fields}
-    if terminal_event and "receipt" in summary and isinstance(summary["receipt"], dict):
-        summary["receipt"] = {key: receipt[key] for key in ("printOption", "printResult") if key in receipt}
-    content = json.dumps(summary, ensure_ascii=False, indent=2)
+    content = json.dumps(payload, ensure_ascii=False, indent=2)
     return title, f"### {title}\n\n```json\n{content}\n```"
 
 
