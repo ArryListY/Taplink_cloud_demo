@@ -157,17 +157,40 @@ def _build_dingtalk_signed_url(webhook_url: str, secret: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query_str, parts.fragment))
 
 
-async def _forward_to_dingtalk(source_payload: Any, event_type: str) -> dict[str, Any]:
+def _notification(payload: Any, event_type: str, terminal_event: bool) -> tuple[str, str]:
+    outer = payload if isinstance(payload, dict) else {}
+    nested = outer.get("payload")
+    fields = {**outer, **nested} if isinstance(nested, dict) else outer
+    if terminal_event:
+        event = fields.get("eventType") or event_type
+        receipt = fields.get("receipt")
+        receipt = receipt if isinstance(receipt, dict) else {}
+        headline = {"ORDER_RECEIVED": "已接单", "PAYMENT_PRESENTED": "等待刷卡",
+                    "PIN_ENTERING": "输入 PIN", "PAYMENT_PROCESSING": "支付处理中",
+                    "SIGNING": "等待签名", "PRINTING": "正在打印签购单",
+                    "PRINT_COMPLETED": "打印结束", "TRANSACTION_ENDED": "交易结束"}.get(str(event), event)
+        if event == "PRINT_COMPLETED" and receipt.get("printResult") == "FAILED":
+            headline = "签购单打印失败"
+        title = f"Sunbay EVENT · {headline}"
+        keys = ("eventType", "eventStage", "receipt", "timestamp")
+    else:
+        kind = fields.get("transactionType") or fields.get("topic") or event_type
+        status = fields.get("transactionStatus")
+        outcome = {"S": "成功", "F": "失败", "P": "处理中", "I": "处理中"}.get(str(status), status)
+        title = f"Sunbay RESULT · {kind}" + (f" {outcome}" if outcome else "")
+        keys = ("transactionType", "transactionStatus", "transactionAmount", "priceCurrency",
+                "transactionResultCode", "transactionResultMsg", "referenceOrderId", "completeTime")
+    keys += ("terminalSn", "transactionRequestId", "transactionId")
+    summary = {key: fields[key] for key in keys if key in fields}
+    if terminal_event and "receipt" in summary and isinstance(summary["receipt"], dict):
+        summary["receipt"] = {key: receipt[key] for key in ("printOption", "printResult") if key in receipt}
+    content = json.dumps(summary, ensure_ascii=False, indent=2)
+    return title, f"### {title}\n\n```json\n{content}\n```"
+
+
+async def _forward_to_dingtalk(source_payload: Any, event_type: str, terminal_event: bool) -> dict[str, Any]:
     signed_url = _build_dingtalk_signed_url(DINGTALK_WEBHOOK_URL, DINGTALK_SECRET)
-    content = json.dumps(source_payload, ensure_ascii=False, indent=2)
-    fields = source_payload if isinstance(source_payload, dict) else {}
-    title = f"Sunbay 测试通知 · {fields.get('topic') or event_type}"
-    lines = [f"### {title}"]
-    for label, key in (("交易结果", "transactionResultMsg"), ("终端", "terminalSn")):
-        if fields.get(key):
-            lines.append(f"- {label}：{fields[key]}")
-    lines.extend(["", "**完整 payload**", "", "```json", content, "```"])
-    text = "\n".join(lines)
+    title, text = _notification(source_payload, event_type, terminal_event)
     body = {
         "msgtype": "markdown",
         "markdown": {
@@ -555,7 +578,7 @@ async def _handle_incoming_webhook(request: Request, bus_event_type: str, defaul
         return JSONResponse({"code": "0", "message": "received test payload"})
 
     try:
-        forward_result = await _forward_to_dingtalk(payload, dingtalk_event)
+        forward_result = await _forward_to_dingtalk(payload, dingtalk_event, bus_event_type == "terminal_notify_received")
         await bus.publish("dingtalk_forward", {"source": bus_event_type, **forward_result})
     except Exception as exc:  # noqa: BLE001
         await bus.publish("dingtalk_forward_error", {"source": bus_event_type, "error": str(exc)})
