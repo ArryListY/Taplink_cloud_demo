@@ -157,17 +157,17 @@ def _build_dingtalk_signed_url(webhook_url: str, secret: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query_str, parts.fragment))
 
 
-async def _forward_to_dingtalk(source_payload: dict[str, Any], event_type: str) -> dict[str, Any]:
+async def _forward_to_dingtalk(source_payload: Any, event_type: str) -> dict[str, Any]:
     signed_url = _build_dingtalk_signed_url(DINGTALK_WEBHOOK_URL, DINGTALK_SECRET)
     content = json.dumps(source_payload, ensure_ascii=False, indent=2)
-    title = f"Sunbay Webhook {event_type}"
-    text = (
-        f"### {title}\n"
-        f"- Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}\n"
-        f"- Event: {event_type}\n"
-        f"\n"
-        f"```json\n{content}\n```"
-    )
+    fields = source_payload if isinstance(source_payload, dict) else {}
+    title = f"Sunbay 测试通知 · {fields.get('topic') or event_type}"
+    lines = [f"### {title}"]
+    for label, key in (("交易结果", "transactionResultMsg"), ("终端", "terminalSn")):
+        if fields.get(key):
+            lines.append(f"- {label}：{fields[key]}")
+    lines.extend(["", "**完整 payload**", "", "```json", content, "```"])
+    text = "\n".join(lines)
     body = {
         "msgtype": "markdown",
         "markdown": {
@@ -555,7 +555,7 @@ async def _handle_incoming_webhook(request: Request, bus_event_type: str, defaul
         return JSONResponse({"code": "0", "message": "received test payload"})
 
     try:
-        forward_result = await _forward_to_dingtalk(event_message, dingtalk_event)
+        forward_result = await _forward_to_dingtalk(payload, dingtalk_event)
         await bus.publish("dingtalk_forward", {"source": bus_event_type, **forward_result})
     except Exception as exc:  # noqa: BLE001
         await bus.publish("dingtalk_forward_error", {"source": bus_event_type, "error": str(exc)})
